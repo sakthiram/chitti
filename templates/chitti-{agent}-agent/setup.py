@@ -1,9 +1,9 @@
-"""Setup script for the bash agent"""
+"""Setup script for the agent package"""
 
 from setuptools import setup, find_namespace_packages
 
 setup(
-    name="chitti-bash-agent",
+    name="chitti-{agent}-agent",
     version="0.1.0",
     packages=find_namespace_packages(where="src"),
     package_dir={"": "src"},
@@ -16,7 +16,7 @@ setup(
     ],
     entry_points={
         "chitti.agents": [
-            "bash=chitti_bash_agent.agent:BashAgent"
+            "{agent}=chitti_{agent}_agent.agent:CustomAgent"
         ]
     }
 ) 

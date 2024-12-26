@@ -1,12 +1,13 @@
 """Chitti - AI agent ecosystem"""
 
 from .hookspecs import AgentSpec, ModelProviderSpec, PromptRequest, PromptResponse
-from .manager import PluginManager
+from .base import BaseAgent, BasePromptPlugin
 
 __all__ = [
-    "AgentSpec",
-    "ModelProviderSpec",
-    "PromptRequest",
-    "PromptResponse",
-    "PluginManager"
+    'AgentSpec',
+    'ModelProviderSpec',
+    'PromptRequest',
+    'PromptResponse',
+    'BaseAgent',
+    'BasePromptPlugin'
 ]

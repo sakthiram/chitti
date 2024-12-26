@@ -169,3 +169,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Cursor rules
+.cursorrules
+
+# Agent specification
+agent_spec.md

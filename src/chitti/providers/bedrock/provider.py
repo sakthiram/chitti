@@ -1,8 +1,13 @@
+"""AWS Bedrock provider implementation"""
+
 import boto3
 import json
+import logging
 from typing import Dict, Any, List, Generator, Union, AsyncGenerator, Optional
 import pluggy
 from ...hookspecs import ModelProviderSpec
+
+logger = logging.getLogger(__name__)
 
 hookimpl = pluggy.HookimplMarker("chitti")
 
@@ -43,41 +48,39 @@ _MODEL_PRICING = {
     }
 }
 
-class BedrockProvider:
+class BedrockProvider(ModelProviderSpec):
     """AWS Bedrock model provider"""
 
+    _instance = None
+    _initialized = False
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self):
-        session = boto3.Session(profile_name='sakthisi-develop')
-        self.bedrock = session.client(
-            service_name='bedrock-runtime',
-            region_name='us-east-1'
-        )
-        self.current_model_index = 0
+        if not BedrockProvider._initialized:
+            session = boto3.Session(profile_name='sakthisi-develop')
+            self.bedrock = session.client(
+                service_name='bedrock-runtime',
+                region_name='us-east-1'
+            )
+            # Cache model info
+            self._model_info = {
+                "name": "bedrock",
+                "description": "AWS Bedrock model provider",
+                "models": _AVAILABLE_MODELS,
+                "default_model": _AVAILABLE_MODELS[0],
+                "pricing": _MODEL_PRICING,
+                "capabilities": {
+                    "streaming": True,
+                    "function_calling": False,
+                    "vision": False
+                }
+            }
+            BedrockProvider._initialized = True
 
-    def _get_model_with_fallback(self, prompt: str, **kwargs) -> str:
-        """Try each model in sequence until one works"""
-        while self.current_model_index < len(_AVAILABLE_MODELS):
-            try:
-                model_id = _AVAILABLE_MODELS[self.current_model_index]
-                body = self._get_request_body(prompt, **kwargs)
-                response = self.bedrock.invoke_model_with_response_stream(
-                    modelId=model_id,
-                    body=json.dumps(body)
-                )
-                print(f"Using model: {model_id}")
-                return response
-            except Exception as e:
-                if 'ThrottlingException' in str(e):
-                    print(f'Model {_AVAILABLE_MODELS[self.current_model_index]} is throttled. Trying next model...')
-                    self.current_model_index += 1
-                else:
-                    raise e
-        raise ValueError('All models are throttled. Please try again later.')
-
-    # Currently only supports Anthropic models
-    # TODO: Add support for other models (can use litellm for other models)
-    # PS: Can even use litellm for all providers, but want to stick to the 
-    # principles of less abstraction and more control
     def _get_request_body(self, prompt: str, **kwargs) -> Dict[str, Any]:
         """Get request body for model invocation"""
         return {
@@ -99,50 +102,30 @@ class BedrockProvider:
     @hookimpl
     def get_model_info(self) -> Dict[str, Any]:
         """Get comprehensive model information"""
-        return {
-            "name": "bedrock",
-            "description": "AWS Bedrock model provider",
-            "models": _AVAILABLE_MODELS,
-            "default_model": _AVAILABLE_MODELS[0],
-            "pricing": _MODEL_PRICING,
-            "capabilities": {
-                "streaming": True,
-                "function_calling": False,
-                "vision": False
-            }
-        }
+        return self._model_info
 
     async def _get_response_stream(self, prompt: str, **kwargs) -> Any:
         """Get response stream from Bedrock with fallback handling"""
-        model_info = self.get_model_info()
-        model_id = kwargs.get('model', model_info["default_model"])
+        model_id = kwargs.get('model', self._model_info["default_model"])
         
-        if model_id not in model_info["models"]:
+        if model_id not in self._model_info["models"]:
             raise ValueError(f"Unsupported model: {model_id}")
 
         try:
-            # Try with specified model first
-            try:
-                body = self._get_request_body(prompt, **kwargs)
-                response = self.bedrock.invoke_model_with_response_stream(
-                    modelId=model_id,
-                    body=json.dumps(body)
-                )
-                print(f"Using model: {model_id}")
-            except Exception as e:
-                if "ThrottlingException" in str(e):
-                    print(f'Model {model_id} is throttled. Trying fallback models...')
-                    self.current_model_index = 0  # Reset index for fallback
-                    response = self._get_model_with_fallback(prompt, **kwargs)
-                else:
-                    raise e
-        
+            body = self._get_request_body(prompt, **kwargs)
+            response = self.bedrock.invoke_model_with_response_stream(
+                modelId=model_id,
+                body=json.dumps(body)
+            )
+            print(f"Using model: {model_id}")
+            
             if not response or 'body' not in response:
                 raise ValueError("Invalid response from Bedrock")
             
             return response
-        except ValueError as e:
-            if 'ExpiredTokenException' in str(e):
+        except Exception as e:
+            # TODO Add throttling fallback support
+            if "ExpiredTokenException" in str(e):
                 error_message = """
                 ### 🔑 AWS Session Token has expired
 
@@ -163,7 +146,8 @@ class BedrockProvider:
                 Then restart the application.
                 """
                 raise ValueError(error_message)
-            raise
+            else:
+                raise
 
     def _process_chunk(self, chunk_bytes: bytes) -> Optional[str]:
         """Process a chunk and return text if valid"""
@@ -172,7 +156,7 @@ class BedrockProvider:
             if chunk.get('type') == 'content_block_delta':
                 if chunk['delta']['type'] == 'text_delta':
                     return chunk['delta']['text']
-        except (json.JSONDecodeError, KeyError):
+        except json.JSONDecodeError:
             pass
         return None
 
