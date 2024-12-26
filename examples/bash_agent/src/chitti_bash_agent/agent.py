@@ -10,6 +10,7 @@ import pluggy
 
 from chitti.base import BaseAgent
 from chitti.services import ChittiService
+from chitti.hookspecs import AgentResponse
 from .prompts import SYSTEM_PROMPT, EXECUTION_PROMPT
 
 hookimpl = pluggy.HookimplMarker("chitti")
@@ -75,24 +76,66 @@ class BashAgent(BaseAgent):
         """Setup FastAPI routes"""
         router = APIRouter()
 
-        @router.post("/run", response_model=CommandResponse)
-        async def run_command(request: CommandRequest) -> Dict[str, Any]:
-            """Run a bash command with LLM assistance"""
+        @router.post("/suggest")
+        async def suggest_command(request: CommandRequest) -> AgentResponse:
+            """Get command suggestion from LLM"""
             try:
-                result = await self.execute_task(request.command, {
-                    "workdir": request.workdir,
-                    **request.context
-                })
-                return {
-                    "suggestion": result["suggestion"],
-                    "output": result.get("output"),
-                    "error": result.get("error"),
-                    "context": result.get("context", {})
-                }
+                result = await self.execute_task(
+                    task=request.command,
+                    context={
+                        "workdir": request.workdir,
+                        **request.context
+                    }
+                )
+                return AgentResponse(
+                    content=result["suggestion"],
+                    success=True,
+                    metadata={
+                        "agent": "bash",
+                        "command": request.command,
+                        "workdir": request.workdir,
+                        "executed": False
+                    },
+                    suggestions=[],
+                    context_updates={"last_command": result["suggestion"]}
+                )
             except Exception as e:
-                raise HTTPException(
-                    status_code=500,
-                    detail=str(e)
+                return AgentResponse(
+                    content="",
+                    success=False,
+                    error=str(e),
+                    metadata={"agent": "bash", "command": request.command}
+                )
+
+        @router.post("/execute")
+        async def execute_command(request: CommandRequest) -> AgentResponse:
+            """Execute a bash command"""
+            try:
+                result = await self.execute_command(
+                    command=request.command,
+                    workdir=request.workdir
+                )
+                return AgentResponse(
+                    content=result["output"],
+                    success=result["success"],
+                    metadata={
+                        "agent": "bash",
+                        "command": request.command,
+                        "workdir": request.workdir,
+                        "executed": True
+                    },
+                    suggestions=[],
+                    context_updates={
+                        "workdir": request.workdir,
+                        "last_command": result["suggestion"]
+                    } if request.workdir else {"last_command": result["suggestion"]}
+                )
+            except Exception as e:
+                return AgentResponse(
+                    content="",
+                    success=False,
+                    error=str(e),
+                    metadata={"agent": "bash", "command": request.command}
                 )
 
         self.router = router
@@ -107,22 +150,60 @@ class BashAgent(BaseAgent):
         @commands.command(name="run")
         @click.argument("command")
         @click.option("--workdir", help="Working directory for command execution")
-        def run_command(command: str, workdir: str = None):
+        def run_command(command: str, workdir: str = None) -> AgentResponse:
             """Run a bash command with LLM assistance"""
             import asyncio
             try:
+                # First get suggestion
                 result = asyncio.run(self.execute_task(
-                    command,
-                    {"workdir": workdir} if workdir else {}
+                    task=command,
+                    context={"workdir": workdir} if workdir else {}
                 ))
                 
-                suggestion = result["suggestion"]
-                click.echo(f"Suggested command: {suggestion}")
+                click.echo(f"Suggested command: {result['suggestion']}")
                 
-                if click.confirm("Execute this command?"):
-                    click.echo(result["output"])
+                if click.confirm("Execute this command?", default=True):
+                    # Then execute if approved
+                    exec_result = asyncio.run(self.execute_command(
+                        command=result["suggestion"],
+                        workdir=workdir
+                    ))
+                    click.echo(exec_result["output"])
+                    return AgentResponse(
+                        content=exec_result["output"],
+                        success=exec_result["success"],
+                        metadata={
+                            "agent": "bash",
+                            "command": command,
+                            "workdir": workdir,
+                            "executed": True
+                        },
+                        suggestions=[],
+                        context_updates={
+                            "workdir": workdir,
+                            "last_command": exec_result["suggestion"]
+                        } if workdir else {"last_command": exec_result["suggestion"]}
+                    )
+                return AgentResponse(
+                    content="Command execution cancelled",
+                    success=True,
+                    metadata={
+                        "agent": "bash",
+                        "command": command,
+                        "executed": False
+                    },
+                    suggestions=[],
+                    context_updates={"last_command": result["suggestion"]}
+                )
             except Exception as e:
-                click.echo(f"Error: {str(e)}", err=True)
+                error_msg = str(e)
+                click.echo(f"Error: {error_msg}", err=True)
+                return AgentResponse(
+                    content="",
+                    success=False,
+                    error=error_msg,
+                    metadata={"agent": "bash", "command": command}
+                )
 
         @commands.command()
         @click.option("--host", default="127.0.0.1", help="Host to bind to")
@@ -156,53 +237,43 @@ class BashAgent(BaseAgent):
 
     @hookimpl
     async def execute_task(self, task: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Execute a bash command task"""
+        """Get command suggestion from LLM"""
         context = context or {}
-        
-        # Handle working directory
-        if workdir := context.get("workdir"):
-            try:
-                os.chdir(workdir)
-            except (FileNotFoundError, NotADirectoryError) as e:
-                raise ValueError(f"Invalid working directory: {str(e)}")
-
         # Get command suggestion from LLM
-        suggestion = await self.execute_with_llm(
-            task,
-            context
-        )
-
-        # Execute the suggested command
+        suggested_command = await self.execute_with_llm(task, context)
+        return {
+            "output": "",
+            "suggestion": suggested_command,
+            "success": True,
+            "executed": False
+        }
+    
+    async def execute_command(self, command: str, workdir: Optional[str] = None) -> Dict[str, Any]:
+        """Execute a bash command"""
+        if workdir:
+            original_dir = os.getcwd()
+            os.chdir(workdir)
+        
         try:
             result = subprocess.run(
-                suggestion,
+                command,
                 shell=True,
                 capture_output=True,
                 text=True
             )
-
-            # Update command history
-            self.command_history.append(suggestion)
-            if len(self.command_history) > 10:  # Keep last 10 commands
-                self.command_history.pop(0)
-
-            if result.returncode == 0:
-                return {
-                    "suggestion": suggestion,
-                    "output": result.stdout,
-                    "error": None,
-                    "context": {
-                        "workdir": os.getcwd(),
-                        "history": self.command_history
-                    }
-                }
-            else:
-                if "command not found" in result.stderr.lower():
-                    raise ValueError(f"Command not found: {suggestion}")
-                else:
-                    raise ValueError(result.stderr)
-        except Exception as e:
-            raise ValueError(f"Command execution failed: {str(e)}") 
+            
+            output = result.stdout if result.returncode == 0 else result.stderr
+            self.command_history.append(command)
+            
+            return {
+                "output": output,
+                "suggestion": command,
+                "success": result.returncode == 0,
+                "executed": True
+            }
+        finally:
+            if workdir:
+                os.chdir(original_dir)
 
     @hookimpl
     def get_commands(self) -> click.Group:

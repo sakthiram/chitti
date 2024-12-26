@@ -1,60 +1,115 @@
-"""Template for agent implementation.
+"""Template for creating a new Chitti agent"""
 
-This template demonstrates the hybrid approach using both base classes and hooks.
-"""
-
+import os
 from typing import Dict, Any, Optional
 import click
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
 import pluggy
 
 from chitti.base import BaseAgent
 from chitti.services import ChittiService
-from .prompts import SYSTEM_PROMPT, EXECUTION_PROMPT, REFLECTION_PROMPT
+from chitti.hookspecs import AgentResponse
+from .prompts import SYSTEM_PROMPT, EXECUTION_PROMPT
 
 hookimpl = pluggy.HookimplMarker("chitti")
 
-class AgentRequest(BaseModel):
-    """Request model for agent execution"""
-    task: str
-    context: Dict[str, Any] = {}
+class TaskRequest(BaseModel):
+    """Request model for agent task execution"""
+    task: str = Field(..., description="Task to execute")
+    context: Dict[str, Any] = Field(default_factory=dict, description="Additional context")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "task": "example task",
+                "context": {"key": "value"}
+            }
+        }
 
 class CustomAgent(BaseAgent):
-    """Custom agent implementation using hybrid approach.
-    
-    Inherits common functionality from BaseAgent while using hooks for extensibility.
-    """
+    """Template for custom agent implementation"""
 
-    def __init__(self, service: Optional[ChittiService] = None):
-        super().__init__(service)
-        # Add any agent-specific initialization here
-        self.history = []
+    def __init__(self):
+        """Initialize agent"""
+        self.task_history = []  # Store task execution history
+        self.router = APIRouter()
+        self.commands = None
+        self.service = ChittiService()  # Get existing singleton
+        self.setup_routes()
+        self.setup_commands()
 
     @property
     def name(self) -> str:
-        return "custom"  # Override with your agent name
+        """Agent name - override with your agent's name"""
+        return "{agent}"
 
     def format_prompt(self, prompt: str, context: Dict[str, Any]) -> str:
         """Format prompt with agent-specific context"""
         return EXECUTION_PROMPT.format(
             task=prompt,
             context=context,
-            history=self.history
+            history=self.task_history
         )
 
     def setup_routes(self):
         """Setup FastAPI routes"""
-        @self.router.post("/execute/")
-        async def execute(request: AgentRequest):
-            """Execute agent task"""
+        router = APIRouter()
+
+        @router.post("/suggest")
+        async def suggest_task(request: TaskRequest) -> AgentResponse:
+            """Get task suggestion from LLM"""
             try:
-                return await self.execute_task(request.task, request.context)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=500,
-                    detail=str(e)
+                result = await self.execute_task(
+                    task=request.task,
+                    context=request.context
                 )
+                return AgentResponse(
+                    content=result["suggestion"],
+                    success=True,
+                    metadata={
+                        "agent": self.name,
+                        "task": request.task
+                    },
+                    suggestions=[],
+                    context_updates={"last_task": result["suggestion"]}
+                )
+            except Exception as e:
+                return AgentResponse(
+                    content="",
+                    success=False,
+                    error=str(e),
+                    metadata={"agent": self.name, "task": request.task}
+                )
+
+        @router.post("/execute")
+        async def execute_task(request: TaskRequest) -> AgentResponse:
+            """Execute a specific task"""
+            try:
+                result = await self.execute_specific_task(
+                    task=request.task,
+                    context=request.context
+                )
+                return AgentResponse(
+                    content=result["output"],
+                    success=result["success"],
+                    metadata={
+                        "agent": self.name,
+                        "task": request.task,
+                        "executed": True
+                    },
+                    suggestions=[],
+                    context_updates={"last_task": result["suggestion"]}
+                )
+            except Exception as e:
+                return AgentResponse(
+                    content="",
+                    success=False,
+                    error=str(e),
+                    metadata={"agent": self.name, "task": request.task}
+                )
+
+        self.router = router
 
     def setup_commands(self):
         """Setup Click commands"""
@@ -63,30 +118,59 @@ class CustomAgent(BaseAgent):
             """Agent commands"""
             pass
 
-        @commands.command()
+        @commands.command(name="run")
         @click.argument("task")
-        def execute(task: str):
-            """Execute agent task"""
+        def run_task(task: str) -> AgentResponse:
+            """Run a task with LLM assistance"""
             import asyncio
             try:
-                result = asyncio.run(self.execute_task(task))
-                click.echo(result["result"])
+                # First get suggestion
+                result = asyncio.run(self.execute_task(
+                    task=task,
+                    context={}
+                ))
+                
+                click.echo(f"Suggested action: {result['suggestion']}")
+                
+                if click.confirm("Execute this action?", default=True):
+                    # Then execute if approved
+                    exec_result = asyncio.run(self.execute_specific_task(
+                        task=result["suggestion"]
+                    ))
+                    click.echo(exec_result["output"])
+                    return AgentResponse(
+                        content=exec_result["output"],
+                        success=exec_result["success"],
+                        metadata={
+                            "agent": self.name,
+                            "task": task,
+                            "executed": True
+                        },
+                        suggestions=[],
+                        context_updates={"last_task": exec_result["suggestion"]}
+                    )
+                return AgentResponse(
+                    content="Task execution cancelled",
+                    success=True,
+                    metadata={
+                        "agent": self.name,
+                        "task": task,
+                        "executed": False
+                    },
+                    suggestions=[],
+                    context_updates={"last_task": result["suggestion"]}
+                )
             except Exception as e:
-                click.echo(f"Error: {str(e)}", err=True)
+                error_msg = str(e)
+                click.echo(f"Error: {error_msg}", err=True)
+                return AgentResponse(
+                    content="",
+                    success=False,
+                    error=error_msg,
+                    metadata={"agent": self.name, "task": task}
+                )
 
-        @commands.command()
-        @click.option("--host", default="127.0.0.1", help="Host to bind to")
-        @click.option("--port", default=8000, help="Port to bind to")
-        def serve(host: str, port: int):
-            """Start the agent server"""
-            import uvicorn
-            uvicorn.run(
-                f"chitti_{self.name}_agent.server:app",
-                host=host,
-                port=port,
-                reload=True
-            )
-
+        # Set the commands attribute for the agent
         self.commands = commands
 
     @hookimpl
@@ -98,33 +182,58 @@ class CustomAgent(BaseAgent):
             "version": "0.1.0",
             "capabilities": {
                 "llm_integration": True,
-                "tool_execution": True,
-                # Add your agent's capabilities here
+                "task_execution": True,
+                "streaming": False
             }
         }
 
     @hookimpl
     async def execute_task(self, task: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Execute a task using LLM and agent-specific logic"""
+        """Get task suggestion from LLM"""
         context = context or {}
-        
-        # Get LLM suggestion
-        result = await self.execute_with_llm(
-            task,
-            context
-        )
-        
-        # Update history
-        self.history.append({
+        # Get suggestion from LLM
+        suggested_task = await self.execute_with_llm(task, context)
+        # Add to task history
+        self.task_history.append({
             "task": task,
-            "result": result
+            "suggestion": suggested_task,
+            "executed": False
         })
-        if len(self.history) > 10:  # Keep last 10 tasks
-            self.history.pop(0)
+        return {
+            "output": "",
+            "suggestion": suggested_task,
+            "success": True,
+            "executed": False
+        }
+    
+    async def execute_specific_task(self, task: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Execute a specific task - override this method with your agent's execution logic"""
+        # Add your task execution logic here
+        # This is just a placeholder implementation
+        output = f"Executed task: {task}"
+        
+        # Update task history
+        if self.task_history and self.task_history[-1]["suggestion"] == task:
+            self.task_history[-1]["executed"] = True
+            self.task_history[-1]["output"] = output
+            self.task_history[-1]["success"] = True
+        else:
+            self.task_history.append({
+                "task": task,
+                "suggestion": task,
+                "executed": True,
+                "output": output,
+                "success": True
+            })
         
         return {
-            "result": result,
-            "context": {
-                "history": self.history
-            }
-        } 
+            "output": output,
+            "suggestion": task,
+            "success": True,
+            "executed": True
+        }
+
+    @hookimpl
+    def get_commands(self) -> click.Group:
+        """Get CLI commands"""
+        return self.commands 

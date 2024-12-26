@@ -13,7 +13,8 @@ setup(
         "boto3",
         "pydantic",
         "python-dotenv",
-        "typing-extensions"
+        "typing-extensions",
+        "prompt_toolkit"
     ],
     extras_require={
         "dev": [

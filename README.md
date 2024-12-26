@@ -9,6 +9,7 @@ Chitti is an extensible AI ecosystem that allows you to interact with various AI
 - 🤖 **Multiple Model Support**: Use different AI models through a unified interface
 - 🛠️ **CLI & API**: Access functionality through both CLI and REST API
 - ⚙️ **Configuration Management**: Flexible settings for providers and models
+- 💬 **Interactive Mode**: Rich interactive shell with session management and history
 
 ### Model Providers
 - 🌟 **AWS Bedrock** (built-in)
@@ -27,41 +28,79 @@ Chitti is an extensible AI ecosystem that allows you to interact with various AI
 ```bash
 # Using uv (recommended)
 uv pip install chitti
-
-# Using pip
-pip install chitti
 ```
 
 ## Usage
 
-### CLI Commands
-
-1. Generate text using AI models:
+### Interactive Mode
 ```bash
-# Using default provider and model
-chitti prompt generate "What is Python?"
+# Start interactive mode
+chitti interactive
 
-# Using specific model
-chitti prompt generate --model "anthropic.claude-3-sonnet-20240229-v1:0" "What is Python?"
+# Available commands in interactive mode:
+help                    # Show available commands
+new                     # Start new session
+save [filename]         # Save conversation history
+context                 # Show current context
+exit                   # Exit interactive mode
+
+# Configuration commands:
+set provider bedrock                                           # Set default provider
+set model "anthropic.claude-3-sonnet-20240229-v1:0"          # Set default model
+show providers                                                # List available providers
+show models bedrock                                          # List models for provider
+show settings                                                # Show current settings
+
+# Regular CLI commands work without 'chitti' prefix
+prompt "What is Python?"
+bash run "list files"  # Two-step execution with confirmation
 ```
 
-2. Configure settings:
+### Direct CLI Commands
+
+1. Prompt Generation:
 ```bash
-# View current settings
-chitti config info
+# Basic prompt
+chitti prompt "What is Python?"
 
-# Set default provider
-chitti config set-provider bedrock
+# With specific model
+chitti prompt --model "anthropic.claude-3-sonnet-20240229-v1:0" "What is Python?"
 
-# Set default model
-chitti config set-model "anthropic.claude-3-sonnet-20240229-v1:0"
+# With streaming
+chitti prompt --stream "Write a long explanation"
 ```
 
-3. Using agents (when installed):
+2. Agent Commands:
 ```bash
-# Use bash agent
-chitti bash prompt "Create a script to backup files"
-chitti bash serve  # Start bash agent server
+# Bash agent (two-step execution)
+chitti bash run "list all files sorted by date"  # Will show suggestion and ask for confirmation
+
+# Other agents follow same pattern
+chitti <agent> run "task description"
+```
+
+3. Agent Management:
+```bash
+# List installed agents
+chitti agents list
+
+# Install an agent
+chitti agents install bash
+
+# Uninstall an agent
+chitti agents uninstall bash
+```
+
+4. Provider Commands:
+```bash
+# List available providers
+chitti providers list
+
+# Get provider information
+chitti providers info bedrock
+
+# List available models for provider
+chitti providers models bedrock
 ```
 
 ### API Usage
@@ -78,8 +117,16 @@ curl -X POST "http://localhost:8000/prompt/" \
   -H "Content-Type: application/json" \
   -d '{"prompt": "What is Python?", "model": "anthropic.claude-3-sonnet-20240229-v1:0"}'
 
-# Get settings
-curl -X GET "http://localhost:8000/settings"
+# Use agent (two-step process)
+# 1. Get suggestion
+curl -X POST "http://localhost:8000/bash/suggest" \
+  -H "Content-Type: application/json" \
+  -d '{"task": "list files", "context": {}}'
+
+# 2. Execute task
+curl -X POST "http://localhost:8000/bash/execute" \
+  -H "Content-Type: application/json" \
+  -d '{"task": "ls -la", "context": {}}'
 ```
 
 ## Development
@@ -176,6 +223,64 @@ setup(
         ]
     }
 )
+```
+
+### Creating a New Agent
+
+1. Create from template:
+```bash
+# Create new agent from template
+chitti agents create my_agent
+
+# Or manually:
+git clone https://github.com/sakthiram/chitti.git
+cp -r templates/chitti-{agent}-agent chitti-my_agent-agent
+cd chitti-my_agent-agent
+```
+
+2. Implement agent logic:
+```python
+# src/chitti_my_agent_agent/agent.py
+
+class MyAgent(BaseAgent):
+    @property
+    def name(self) -> str:
+        return "my_agent"
+    
+    async def execute_specific_task(self, task: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Implement your agent's task execution logic here"""
+        # Your implementation
+        return {
+            "output": "task output",
+            "suggestion": "suggested action",
+            "success": True,
+            "executed": True
+        }
+```
+
+3. Customize prompts:
+```python
+# src/chitti_my_agent_agent/prompts.py
+
+SYSTEM_PROMPT = """You are a specialized my_agent with capabilities:
+1. [List your agent's capabilities]
+2. [Add more capabilities]
+"""
+
+EXECUTION_PROMPT = """Task: {task}
+Context: {context}
+History: {history}
+
+Suggest the most appropriate action for this task."""
+```
+
+4. Install and test:
+```bash
+# Install in development mode
+pip install -e .
+
+# Test your agent
+chitti my_agent run "test task"
 ```
 
 ## Contributing

@@ -96,8 +96,23 @@ class BedrockProvider(ModelProviderSpec):
 
     @hookimpl
     def get_provider_name(self) -> str:
-        """Get the unique name of this provider"""
+        """Get provider name"""
         return "bedrock"
+
+    @hookimpl
+    def get_provider_info(self) -> Dict[str, Any]:
+        """Get provider information"""
+        return {
+            "name": self.get_provider_name(),
+            "description": "AWS Bedrock provider with Claude 3 models",
+            "models": _AVAILABLE_MODELS,
+            "capabilities": {
+                "streaming": True,
+                "async_generation": True,
+                "token_usage": True,
+                "throttling": True
+            }
+        }
 
     @hookimpl
     def get_model_info(self) -> Dict[str, Any]:

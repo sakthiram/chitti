@@ -2,11 +2,11 @@
 
 This template provides a standardized way to create new agents for the Chitti framework. It includes:
 
-- Base agent class with LLM integration
-- Standardized prompt templates
-- FastAPI server setup
-- Click CLI integration
-- Plugin registration
+- Two-step task execution (suggest → execute)
+- LLM integration for task suggestions
+- Task history tracking
+- CLI and API interfaces
+- Context management
 
 ## Creating a New Agent
 
@@ -27,7 +27,6 @@ chitti-{agent}-agent/
 │   └── chitti_{agent}_agent/
 │       ├── __init__.py
 │       ├── agent.py      # Main agent implementation
-│       ├── base.py       # Base agent class
 │       ├── prompts.py    # Agent-specific prompts
 │       └── server.py     # FastAPI server
 ├── tests/               # Add your tests here
@@ -37,72 +36,81 @@ chitti-{agent}-agent/
 ## Customizing Your Agent
 
 1. Edit `agent.py`:
-   - Override the `name` property
-   - Implement agent-specific logic in `format_prompt`
-   - Add custom routes and commands
+   - Override the `name` property with your agent's name
+   - Implement `execute_specific_task` with your agent's logic
+   - Customize task history and context handling
+   - Add any agent-specific routes or commands
 
 2. Edit `prompts.py`:
    - Customize prompts for your agent's needs
-   - Add new prompt templates
+   - Update system prompt capabilities
+   - Modify execution prompt format
 
-3. Add Dependencies:
-   - Update `setup.py` with additional requirements
+3. Update `setup.py`:
+   - Add agent-specific dependencies
+   - Set appropriate version and metadata
 
-## Integration with Chitti
+## Using Your Agent
 
-The agent will automatically register with Chitti through the entry point in `setup.py`:
+### CLI Usage
+```bash
+# Get task suggestion
+chitti my_agent run "your task description"
 
-```python
-entry_points={
-    "chitti.agents": [
-        "{agent}=chitti_{agent}_agent.agent:CustomAgent"
-    ]
-}
+# The agent will:
+# 1. Get suggestion from LLM
+# 2. Show the suggested action
+# 3. Ask for confirmation
+# 4. Execute if approved
 ```
 
-## Usage
+### API Usage
+```bash
+# Get task suggestion
+curl -X POST "http://localhost:8000/my_agent/suggest" \
+  -H "Content-Type: application/json" \
+  -d '{"task": "your task", "context": {}}'
 
-After installation:
+# Execute specific task
+curl -X POST "http://localhost:8000/my_agent/execute" \
+  -H "Content-Type: application/json" \
+  -d '{"task": "specific task", "context": {}}'
+```
+
+## Agent Response Format
 
 ```python
-from chitti_{agent}_agent import CustomAgent
+AgentResponse(
+    content="Task output or suggestion",
+    success=True,
+    metadata={
+        "agent": "my_agent",
+        "task": "original task",
+        "executed": True/False
+    },
+    suggestions=[],  # For future use
+    context_updates={
+        "last_task": "executed/suggested task"
+    }
+)
+```
 
-# Create agent instance
-agent = CustomAgent()
+## Task History Format
 
-# Use via CLI
-chitti {agent} execute "task"
-chitti {agent} serve
-
-# Use via API
-# Start server:
-chitti {agent} serve
-# Then send requests to: http://localhost:8000/{agent}/execute/
+```python
+{
+    "task": "original task",
+    "suggestion": "suggested action",
+    "executed": True/False,
+    "output": "execution output",  # If executed
+    "success": True/False         # If executed
+}
 ```
 
 ## Best Practices
 
-1. **LLM Integration**:
-   - Use `execute_with_llm` for AI-powered decisions
-   - Customize prompts for specific use cases
-
-2. **Error Handling**:
-   - Implement proper error handling in routes
-   - Provide clear error messages
-
-3. **Testing**:
-   - Add tests for agent-specific logic
-   - Test LLM integration
-   - Test API endpoints
-
-4. **Documentation**:
-   - Document agent capabilities
-   - Include usage examples
-   - Document custom commands
-
-## Example Agents
-
-Check the examples directory for reference implementations:
-- Bash Agent: Command execution
-- Python Agent: Code execution
-- Orchestrator Agent: Multi-agent coordination 
+1. **Safety First**: Always validate tasks and suggestions before execution
+2. **Context Awareness**: Use the provided context in task suggestions
+3. **History Management**: Keep relevant task history for better suggestions
+4. **Error Handling**: Provide clear error messages and handle failures gracefully
+5. **Documentation**: Document agent-specific parameters and capabilities 

@@ -23,7 +23,7 @@ Design Tenets:
    - Service classes for shared state
 """
 
-from typing import Dict, Any, List, Optional, AsyncGenerator, Protocol
+from typing import Dict, Any, List, Optional, AsyncGenerator, Protocol, Union
 import click
 from fastapi import APIRouter
 import pluggy
@@ -32,17 +32,36 @@ from pydantic import BaseModel, Field
 hookspec = pluggy.HookspecMarker("chitti")
 
 class PromptRequest(BaseModel):
-    """Model for prompt requests"""
-    prompt: str = Field(..., description="The prompt text")
-    model: Optional[str] = Field(None, description="Model to use")
-    provider: Optional[str] = Field(None, description="Provider to use")
-    tools: List[str] = Field(default_factory=list, description="Tools to use")
-    context: Dict[str, Any] = Field(default_factory=dict, description="Additional context")
+    """Request model for prompt generation"""
+    prompt: str
+    model: Optional[str] = None
+    provider: Optional[str] = None
+    context: Dict[str, Any] = {}
 
 class PromptResponse(BaseModel):
-    """Model for prompt responses"""
-    response: str = Field(..., description="The response text")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Response metadata")
+    """Response model for prompt generation"""
+    response: str
+    metadata: Dict[str, Any] = {}
+
+class AgentResponse(BaseModel):
+    """Standardized response type for all agents"""
+    content: str
+    success: bool = True
+    error: Optional[str] = None
+    metadata: Dict[str, Any] = {}
+    suggestions: List[str] = []  # Suggested next actions/commands
+    context_updates: Dict[str, Any] = {}  # Updates to session context
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "content": "Command output or agent response",
+                "success": True,
+                "metadata": {"agent": "bash", "command": "ls"},
+                "suggestions": ["cd directory", "cat file"],
+                "context_updates": {"workdir": "/new/path"}
+            }
+        }
 
 class CorePluginSpec:
     """Core plugin specifications"""
@@ -67,8 +86,16 @@ class ModelProviderSpec:
         """Generate text using the model with streaming"""
 
     @hookspec(firstresult=True)
-    def get_model_info(self) -> Dict[str, Any]:
-        """Get model information"""
+    def get_provider_info(self) -> Dict[str, Any]:
+        """Get provider information
+        
+        Returns:
+            Dict containing:
+            - name: str - Provider name
+            - description: str - Provider description
+            - models: List[str] - Available models
+            - capabilities: Dict[str, bool] - Provider capabilities
+        """
 
     @hookspec(firstresult=True)
     def get_provider_name(self) -> str:
@@ -95,7 +122,18 @@ class AgentSpec:
 
     @hookspec(firstresult=True)
     def execute_task(self, task: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Execute a task"""
+        """Execute a task with the agent
+        
+        Args:
+            task: The task to execute (e.g., command for bash agent, prompt for chat agent)
+            context: Additional context for task execution
+            
+        Returns:
+            Dict containing at minimum:
+            - output: str - The task output
+            - success: bool - Whether the task succeeded
+            - suggestion: str - Suggested next action
+        """
 
 class ToolSpec:
     """Tool specifications"""
