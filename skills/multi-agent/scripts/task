@@ -1,0 +1,452 @@
+#!/bin/bash
+# Multi-agent task management CLI
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Default project to current directory, can override with --project
+PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
+TASKS_DIR="${PROJECT_DIR}/tasks"
+REGISTRY="${PROJECT_DIR}/.task-registry.json"
+
+# Parse global flags
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --project)
+      PROJECT_DIR="$2"
+      TASKS_DIR="${PROJECT_DIR}/tasks"
+      REGISTRY="${PROJECT_DIR}/.task-registry.json"
+      shift 2
+      ;;
+    --cli)
+      CLI="$2"
+      shift 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+CLI="${CLI:-claude}"  # Default to claude, can also use "kiro"
+
+# Initialize registry if it doesn't exist
+init_registry() {
+  mkdir -p "$PROJECT_DIR"
+  if [[ ! -f "$REGISTRY" ]]; then
+    echo '{}' > "$REGISTRY"
+  fi
+}
+
+cmd_start() {
+  local TASK_NAME=$1
+
+  if [[ -z "$TASK_NAME" ]]; then
+    echo "Usage: $0 start <task-name> [--project <path>]"
+    exit 1
+  fi
+
+  # Validate task name
+  if [[ ! "$TASK_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo "Error: Task name must contain only alphanumeric characters, hyphens, and underscores"
+    exit 1
+  fi
+
+  init_registry
+  local TASK_DIR="${TASKS_DIR}/${TASK_NAME}"
+
+  if [[ -d "$TASK_DIR" ]]; then
+    echo "Error: Task '${TASK_NAME}' already exists at ${TASK_DIR}"
+    exit 1
+  fi
+
+  echo "Creating task: ${TASK_NAME}"
+  echo "Project: ${PROJECT_DIR}"
+  echo ""
+
+  # Prompt for task details
+  echo "=== Task Setup ==="
+  echo ""
+  read -p "Goal (one line): " TASK_GOAL
+  echo ""
+  echo "Acceptance criteria (one per line, empty line to finish):"
+  CRITERIA=""
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && break
+    CRITERIA="${CRITERIA}- [ ] ${line}\n"
+  done
+  echo ""
+  read -p "Any context/background? (optional): " TASK_CONTEXT
+  echo ""
+
+  # Agent config
+  echo "=== Agent Configuration ==="
+  echo "(Press enter to skip, PM will use defaults)"
+  echo ""
+  read -p "Dev/Architect CWD (local path or user@host:/path): " DEV_CWD
+  read -p "Skills for dev agent (comma-separated): " DEV_SKILLS
+  read -p "Test agent CWD (local path, device access is local): " TEST_CWD
+  read -p "Skills for test agent (comma-separated): " TEST_SKILLS
+  echo ""
+
+  # Create structure
+  mkdir -p "${TASK_DIR}"/{handoffs,artifacts,scratchpad}
+
+  # Generate task.md
+  cat > "${TASK_DIR}/task.md" <<EOF
+# Task: ${TASK_NAME}
+
+## Goal
+${TASK_GOAL}
+
+## Acceptance Criteria
+$(echo -e "$CRITERIA")
+
+## Context
+${TASK_CONTEXT:-No additional context provided.}
+
+## Validation
+\`\`\`bash
+# Add validation commands here
+\`\`\`
+
+## Agent Config
+
+\`\`\`yaml
+EOF
+
+  # Add agent config if provided
+  if [[ -n "$DEV_CWD" ]] || [[ -n "$DEV_SKILLS" ]]; then
+    echo "dev:" >> "${TASK_DIR}/task.md"
+    [[ -n "$DEV_CWD" ]] && echo "  cwd: ${DEV_CWD}" >> "${TASK_DIR}/task.md"
+    [[ -n "$DEV_SKILLS" ]] && echo "  skills: [${DEV_SKILLS}]" >> "${TASK_DIR}/task.md"
+    echo "" >> "${TASK_DIR}/task.md"
+  fi
+
+  if [[ -n "$DEV_CWD" ]]; then
+    echo "architect:" >> "${TASK_DIR}/task.md"
+    echo "  cwd: ${DEV_CWD}" >> "${TASK_DIR}/task.md"
+    echo "" >> "${TASK_DIR}/task.md"
+  fi
+
+  if [[ -n "$TEST_CWD" ]] || [[ -n "$TEST_SKILLS" ]]; then
+    echo "test:" >> "${TASK_DIR}/task.md"
+    [[ -n "$TEST_CWD" ]] && echo "  cwd: ${TEST_CWD}" >> "${TASK_DIR}/task.md"
+    [[ -n "$TEST_SKILLS" ]] && echo "  skills: [${TEST_SKILLS}]" >> "${TASK_DIR}/task.md"
+    echo "" >> "${TASK_DIR}/task.md"
+  fi
+
+  cat >> "${TASK_DIR}/task.md" <<'EOF'
+# review:
+#   static: true
+
+# scribe:
+#   static: true
+```
+
+## Agent Guidance (Optional)
+
+### explore
+focus: ""
+done_when: ""
+
+### plan
+constraints: ""
+
+### dev
+style_guide: ""
+validation: ""
+
+### review
+critical_checks: ["correctness", "completeness"]
+EOF
+
+  # Initialize pm_state.json
+  cat > "${TASK_DIR}/pm_state.json" <<EOF
+{
+  "status": "ACTIVE",
+  "current_phase": "init",
+  "spawned_agents": [],
+  "iteration": 0,
+  "last_checkin": null,
+  "cli": "${CLI}"
+}
+EOF
+
+  # Register task
+  local STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  jq --arg name "$TASK_NAME" \
+     --arg status "ACTIVE" \
+     --arg started "$STARTED" \
+     --arg project "$PROJECT_DIR" \
+     '.[$name] = {status: $status, started: $started, project: $project}' \
+     "$REGISTRY" > "${REGISTRY}.tmp" && mv "${REGISTRY}.tmp" "$REGISTRY"
+
+  echo ""
+  echo "Task directory created: ${TASK_DIR}"
+  echo ""
+
+  # Prompt to edit task.md
+  read -p "Edit task.md now? [y/N]: " edit
+  if [[ "$edit" =~ ^[Yy]$ ]]; then
+    ${EDITOR:-vim} "${TASK_DIR}/task.md"
+  fi
+
+  # Check if agents exist
+  if [[ "$CLI" == "kiro" ]]; then
+    AGENT_DIR="${PROJECT_DIR}/.kiro/agents"
+  else
+    AGENT_DIR="${PROJECT_DIR}/.claude/agents"
+  fi
+
+  if [[ ! -f "${AGENT_DIR}/pm.md" ]] && [[ ! -f "${AGENT_DIR}/pm.json" ]]; then
+    echo ""
+    echo "⚠️  Agents not found. Running setup-agents..."
+    bash "${SCRIPT_DIR}/setup-agents" "$PROJECT_DIR"
+  fi
+
+  echo ""
+  echo "Starting PM session..."
+
+  # Spawn PM
+  bash "${SCRIPT_DIR}/spawn_pm.sh" "$TASK_NAME" --project "$PROJECT_DIR" --cli "$CLI"
+
+  echo ""
+  echo "Task '${TASK_NAME}' started!"
+  echo ""
+  echo "Commands:"
+  echo "  $0 status ${TASK_NAME}    # Check status"
+  echo "  $0 attach ${TASK_NAME}    # Attach to PM"
+  echo "  $0 stop ${TASK_NAME}      # Stop task"
+}
+
+cmd_list() {
+  init_registry
+  echo "═══════════════════════════════════════════════════════════"
+  echo " TASKS (Project: ${PROJECT_DIR})"
+  echo "═══════════════════════════════════════════════════════════"
+  echo ""
+
+  local active_count=0
+  while IFS= read -r task; do
+    if [[ -n "$task" ]]; then
+      local started=$(jq -r ".\"${task}\".started" "$REGISTRY")
+      local project=$(jq -r ".\"${task}\".project // \"unknown\"" "$REGISTRY")
+      echo "  ● ${task}"
+      echo "      Started: ${started}"
+      echo "      Project: ${project}"
+
+      local task_dir="${TASKS_DIR}/${task}"
+      if [[ -f "${task_dir}/pm_state.json" ]]; then
+        local phase=$(jq -r '.current_phase // "unknown"' "${task_dir}/pm_state.json")
+        echo "      Phase: ${phase}"
+      fi
+      echo ""
+      ((active_count++))
+    fi
+  done < <(jq -r 'to_entries[] | select(.value.status == "ACTIVE") | .key' "$REGISTRY" 2>/dev/null)
+
+  if [[ $active_count -eq 0 ]]; then
+    echo "  No active tasks"
+    echo ""
+  fi
+
+  echo "───────────────────────────────────────────────────────────"
+  echo " COMPLETED"
+  echo "───────────────────────────────────────────────────────────"
+
+  local complete_count=0
+  while IFS= read -r task; do
+    if [[ -n "$task" ]]; then
+      echo "  ✓ ${task}"
+      ((complete_count++))
+    fi
+  done < <(jq -r 'to_entries[] | select(.value.status == "COMPLETE") | .key' "$REGISTRY" 2>/dev/null)
+
+  if [[ $complete_count -eq 0 ]]; then
+    echo "  No completed tasks"
+  fi
+  echo ""
+}
+
+cmd_status() {
+  local TASK_NAME=$1
+  if [[ -z "$TASK_NAME" ]]; then
+    echo "Usage: $0 status <task-name>"
+    exit 1
+  fi
+
+  init_registry
+  local TASK_DIR="${TASKS_DIR}/${TASK_NAME}"
+
+  if [[ ! -d "$TASK_DIR" ]]; then
+    echo "Error: Task not found: ${TASK_NAME}"
+    exit 1
+  fi
+
+  echo "═══════════════════════════════════════════════════════════"
+  echo " Task: ${TASK_NAME}"
+  echo "═══════════════════════════════════════════════════════════"
+  echo ""
+
+  # Show progress.md if exists (from scribe)
+  if [[ -f "${TASK_DIR}/progress.md" ]]; then
+    cat "${TASK_DIR}/progress.md"
+    echo ""
+  else
+    # Fallback to pm_state.json
+    local phase=$(jq -r '.current_phase // "unknown"' "${TASK_DIR}/pm_state.json" 2>/dev/null)
+    local iteration=$(jq -r '.iteration // 0' "${TASK_DIR}/pm_state.json" 2>/dev/null)
+    local last_checkin=$(jq -r '.last_checkin // "never"' "${TASK_DIR}/pm_state.json" 2>/dev/null)
+
+    echo "Phase: ${phase}"
+    echo "Iteration: ${iteration}"
+    echo "Last Check-in: ${last_checkin}"
+    echo ""
+
+    # List recent handoffs
+    echo "Recent Handoffs:"
+    ls -lt "${TASK_DIR}/handoffs" 2>/dev/null | head -5 | awk '{print "  " $NF}'
+    echo ""
+  fi
+
+  # Show tmux session info
+  local SESSION="task-${TASK_NAME}-pm"
+  if tmux has-session -t "$SESSION" 2>/dev/null; then
+    echo "Tmux Session: ${SESSION}"
+    echo "Windows:"
+    tmux list-windows -t "$SESSION" -F "  #{window_index}: #{window_name}" 2>/dev/null
+    echo ""
+  fi
+
+  echo "───────────────────────────────────────────────────────────"
+  echo "Commands:"
+  echo "  $0 attach ${TASK_NAME}    # Attach to PM"
+  echo "  $0 logs ${TASK_NAME}      # View handoffs"
+  echo "  $0 stop ${TASK_NAME}      # Stop task"
+}
+
+cmd_attach() {
+  local TASK_NAME=$1
+  if [[ -z "$TASK_NAME" ]]; then
+    echo "Usage: $0 attach <task-name>"
+    exit 1
+  fi
+
+  local SESSION="task-${TASK_NAME}-pm"
+  if ! tmux has-session -t "$SESSION" 2>/dev/null; then
+    echo "Error: PM session not found: ${SESSION}"
+    exit 1
+  fi
+
+  tmux attach-session -t "$SESSION"
+}
+
+cmd_stop() {
+  local TASK_NAME=$1
+  if [[ -z "$TASK_NAME" ]]; then
+    echo "Usage: $0 stop <task-name>"
+    exit 1
+  fi
+
+  init_registry
+  local SESSION="task-${TASK_NAME}-pm"
+
+  # Kill tmux session
+  if tmux has-session -t "$SESSION" 2>/dev/null; then
+    tmux kill-session -t "$SESSION"
+    echo "Stopped tmux session: ${SESSION}"
+  fi
+
+  # Remove rsync cron entries for this task
+  if crontab -l 2>/dev/null | grep -q "${TASK_NAME}"; then
+    crontab -l 2>/dev/null | grep -v "${TASK_NAME}" | crontab -
+    echo "Removed rsync cron jobs for: ${TASK_NAME}"
+  fi
+
+  # Update registry
+  jq --arg name "$TASK_NAME" \
+     --arg stopped "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+     '.[$name].status = "STOPPED" | .[$name].stopped = $stopped' \
+     "$REGISTRY" > "${REGISTRY}.tmp" && mv "${REGISTRY}.tmp" "$REGISTRY"
+
+  echo "Task '${TASK_NAME}' stopped"
+}
+
+cmd_logs() {
+  local TASK_NAME=$1
+  if [[ -z "$TASK_NAME" ]]; then
+    echo "Usage: $0 logs <task-name>"
+    exit 1
+  fi
+
+  local TASK_DIR="${TASKS_DIR}/${TASK_NAME}"
+  if [[ ! -d "$TASK_DIR" ]]; then
+    echo "Error: Task not found: ${TASK_NAME}"
+    exit 1
+  fi
+
+  echo "Handoffs:"
+  ls -lt "${TASK_DIR}/handoffs" 2>/dev/null | tail -n +2 | awk '{print "  " $NF " (" $6 " " $7 " " $8 ")"}'
+  echo ""
+  echo "Artifacts:"
+  find "${TASK_DIR}/artifacts" -type f 2>/dev/null | sed 's/^/  /'
+  echo ""
+  echo "View: cat ${TASK_DIR}/handoffs/<filename>"
+}
+
+cmd_ui() {
+  bash "${SCRIPT_DIR}/tui"
+}
+
+cmd_help() {
+  cat <<EOF
+Multi-Agent Task Management CLI
+
+Usage: $0 [--project <path>] [--cli claude|kiro] <command> [args]
+
+Global Flags:
+  --project <path>    Project directory (default: current directory)
+  --cli claude|kiro   CLI to use (default: claude)
+
+Commands:
+  start <name>   Create and start new task
+  list           List all tasks
+  status <name>  Show task status
+  attach <name>  Attach to PM tmux session
+  stop <name>    Stop task and cleanup
+  logs <name>    View handoffs and artifacts
+  ui             Launch TUI dashboard
+  help           Show this help
+
+CLI Options:
+  claude  - Uses claude CLI with --print for prompts, --agents for inline JSON
+  kiro    - Uses kiro-cli chat, --agent for static agents
+
+Examples:
+  $0 start my-feature
+  $0 --project /path/to/project start my-feature
+  $0 --cli kiro start my-feature
+  $0 status my-feature
+  $0 attach my-feature
+EOF
+}
+
+# Main dispatch
+case "$1" in
+  start)  cmd_start "$2" ;;
+  list)   cmd_list ;;
+  status) cmd_status "$2" ;;
+  attach) cmd_attach "$2" ;;
+  stop)   cmd_stop "$2" ;;
+  logs)   cmd_logs "$2" ;;
+  ui)     cmd_ui ;;
+  help|--help|-h) cmd_help ;;
+  *)
+    echo "Error: Unknown command '$1'"
+    cmd_help
+    exit 1
+    ;;
+esac

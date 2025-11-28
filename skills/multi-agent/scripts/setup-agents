@@ -1,0 +1,208 @@
+#!/bin/bash
+# Generate CLI-specific agent files from templates
+# Creates both .claude/agents/*.md and .kiro/agents/*.json
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_DIR="$(dirname "$SCRIPT_DIR")"
+PROJECT_DIR="${1:-$(pwd)}"
+
+PROMPTS_DIR="${SKILL_DIR}/references/agent-prompts"
+CLAUDE_DEFS="${SKILL_DIR}/references/claude_agents.md"
+KIRO_DEFS="${SKILL_DIR}/references/kiro_agents.md"
+
+AGENTS="pm explore plan architect dev test review scribe"
+
+echo "Setting up agents for project: ${PROJECT_DIR}"
+echo ""
+
+# Create agent directories
+mkdir -p "${PROJECT_DIR}/.claude/agents"
+mkdir -p "${PROJECT_DIR}/.kiro/agents"
+
+# Generate Claude agents (.md files)
+echo "Generating Claude agents..."
+
+current_agent=""
+description=""
+tools=""
+model=""
+skills=""
+
+while IFS= read -r line; do
+  if [[ "$line" =~ ^##[[:space:]]([a-z]+)$ ]]; then
+    # Write previous agent
+    if [[ -n "$current_agent" ]]; then
+      agent_file="${PROJECT_DIR}/.claude/agents/${current_agent}.md"
+      prompt_file="${PROMPTS_DIR}/${current_agent}.md"
+      
+      if [[ -f "$agent_file" ]]; then
+        echo "  Skip: ${current_agent}.md (exists)"
+      elif [[ ! -f "$prompt_file" ]]; then
+        echo "  Skip: ${current_agent}.md (no prompt file)"
+      else
+        # Read system prompt (skip first line which is the title)
+        system_prompt=$(tail -n +3 "$prompt_file")
+        
+        cat > "$agent_file" << EOF
+---
+name: ${current_agent}
+description: ${description}
+EOF
+        [[ -n "$tools" ]] && echo "tools: ${tools}" >> "$agent_file"
+        [[ -n "$model" ]] && echo "model: ${model}" >> "$agent_file"
+        [[ -n "$skills" ]] && echo "skills: ${skills}" >> "$agent_file"
+        echo "---" >> "$agent_file"
+        echo "" >> "$agent_file"
+        echo "$system_prompt" >> "$agent_file"
+        echo "  Created: ${current_agent}.md"
+      fi
+    fi
+    current_agent="${BASH_REMATCH[1]}"
+    description=""
+    tools=""
+    model=""
+    skills=""
+  elif [[ "$line" =~ ^description:[[:space:]]*(.+)$ ]]; then
+    description="${BASH_REMATCH[1]}"
+  elif [[ "$line" =~ ^tools:[[:space:]]*(.+)$ ]]; then
+    tools="${BASH_REMATCH[1]}"
+  elif [[ "$line" =~ ^model:[[:space:]]*(.+)$ ]]; then
+    model="${BASH_REMATCH[1]}"
+  elif [[ "$line" =~ ^skills:[[:space:]]*(.+)$ ]]; then
+    skills="${BASH_REMATCH[1]}"
+  fi
+done < "$CLAUDE_DEFS"
+
+# Write last agent
+if [[ -n "$current_agent" ]]; then
+  agent_file="${PROJECT_DIR}/.claude/agents/${current_agent}.md"
+  prompt_file="${PROMPTS_DIR}/${current_agent}.md"
+  
+  if [[ -f "$agent_file" ]]; then
+    echo "  Skip: ${current_agent}.md (exists)"
+  elif [[ ! -f "$prompt_file" ]]; then
+    echo "  Skip: ${current_agent}.md (no prompt file)"
+  else
+    system_prompt=$(tail -n +3 "$prompt_file")
+    cat > "$agent_file" << EOF
+---
+name: ${current_agent}
+description: ${description}
+EOF
+    [[ -n "$tools" ]] && echo "tools: ${tools}" >> "$agent_file"
+    [[ -n "$model" ]] && echo "model: ${model}" >> "$agent_file"
+    [[ -n "$skills" ]] && echo "skills: ${skills}" >> "$agent_file"
+    echo "---" >> "$agent_file"
+    echo "" >> "$agent_file"
+    echo "$system_prompt" >> "$agent_file"
+    echo "  Created: ${current_agent}.md"
+  fi
+fi
+
+# Generate Kiro agents (.json files)
+echo ""
+echo "Generating Kiro agents..."
+
+current_agent=""
+description=""
+tools=""
+model=""
+
+while IFS= read -r line; do
+  if [[ "$line" =~ ^##[[:space:]]([a-z]+)$ ]]; then
+    # Write previous agent
+    if [[ -n "$current_agent" ]]; then
+      agent_file="${PROJECT_DIR}/.kiro/agents/${current_agent}.json"
+      prompt_file="${PROMPTS_DIR}/${current_agent}.md"
+      
+      if [[ -f "$agent_file" ]]; then
+        echo "  Skip: ${current_agent}.json (exists)"
+      elif [[ ! -f "$prompt_file" ]]; then
+        echo "  Skip: ${current_agent}.json (no prompt file)"
+      else
+        # Read system prompt (skip first line which is the title)
+        system_prompt=$(tail -n +3 "$prompt_file")
+        
+        # Convert tools to JSON array
+        tools_json="[]"
+        if [[ -n "$tools" ]]; then
+          tools_json=$(echo "$tools" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | jq -R . | jq -s .)
+        fi
+        
+        # Escape prompt for JSON
+        prompt_escaped=$(echo "$system_prompt" | jq -Rs .)
+        
+        # Build JSON
+        json_content="{
+  \"name\": \"${current_agent}\",
+  \"description\": \"${description}\",
+  \"tools\": ${tools_json},
+  \"prompt\": ${prompt_escaped}"
+        
+        if [[ -n "$model" ]]; then
+          json_content="${json_content},
+  \"model\": \"${model}\""
+        fi
+        
+        json_content="${json_content}
+}"
+        
+        echo "$json_content" > "$agent_file"
+        echo "  Created: ${current_agent}.json"
+      fi
+    fi
+    current_agent="${BASH_REMATCH[1]}"
+    description=""
+    tools=""
+    model=""
+  elif [[ "$line" =~ ^description:[[:space:]]*(.+)$ ]]; then
+    description="${BASH_REMATCH[1]}"
+  elif [[ "$line" =~ ^tools:[[:space:]]*(.+)$ ]]; then
+    tools="${BASH_REMATCH[1]}"
+  elif [[ "$line" =~ ^model:[[:space:]]*(.+)$ ]]; then
+    model="${BASH_REMATCH[1]}"
+  fi
+done < "$KIRO_DEFS"
+
+# Write last agent
+if [[ -n "$current_agent" ]]; then
+  agent_file="${PROJECT_DIR}/.kiro/agents/${current_agent}.json"
+  prompt_file="${PROMPTS_DIR}/${current_agent}.md"
+  
+  if [[ -f "$agent_file" ]]; then
+    echo "  Skip: ${current_agent}.json (exists)"
+  elif [[ ! -f "$prompt_file" ]]; then
+    echo "  Skip: ${current_agent}.json (no prompt file)"
+  else
+    system_prompt=$(tail -n +3 "$prompt_file")
+    tools_json="[]"
+    if [[ -n "$tools" ]]; then
+      tools_json=$(echo "$tools" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | jq -R . | jq -s .)
+    fi
+    prompt_escaped=$(echo "$system_prompt" | jq -Rs .)
+    
+    json_content="{
+  \"name\": \"${current_agent}\",
+  \"description\": \"${description}\",
+  \"tools\": ${tools_json},
+  \"prompt\": ${prompt_escaped}"
+    
+    if [[ -n "$model" ]]; then
+      json_content="${json_content},
+  \"model\": \"${model}\""
+    fi
+    
+    json_content="${json_content}
+}"
+    
+    echo "$json_content" > "$agent_file"
+    echo "  Created: ${current_agent}.json"
+  fi
+fi
+
+echo ""
+echo "Done! Agents created in:"
+echo "  Claude: ${PROJECT_DIR}/.claude/agents/"
+echo "  Kiro:   ${PROJECT_DIR}/.kiro/agents/"
