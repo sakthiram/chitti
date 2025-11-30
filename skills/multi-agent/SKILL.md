@@ -1,15 +1,17 @@
 ---
 name: multi-agent
-description: Orchestrate autonomous agent teams to complete complex tasks. PM spawns specialized agents, makes signal-based decisions, and manages workflow adaptively. Supports local and remote agents, persistent sessions, and continuous learning through skills.
+description: Orchestrate autonomous agent teams to complete complex tasks. PM dynamically selects specialized agents based on task classification and enforces non-negotiable principles. Supports local and remote agents, persistent sessions, and continuous learning through skills.
 ---
 
 # Multi-Agent Orchestrator
 
 ## Overview
 
-This skill enables long-running (4-8 hour) autonomous agent workflows. A PM agent orchestrates specialized agents (explore, plan, architect, dev, test, review, scribe) to complete complex tasks without constant human supervision.
+This skill enables long-running (4-8 hour) autonomous agent workflows. A PM agent **dynamically selects** specialized agents (explore, plan, architect, dev, test, review, scribe) based on task needs, enforcing software engineering principles.
 
 **Key Features:**
+- **Dynamic agent selection** based on task classification
+- **Non-negotiable principles** (review always, scribe for non-trivial, plan usually)
 - Signal-based decisions (no hardcoded timeouts)
 - Persistent agent sessions with follow-up instructions
 - Remote coding support (dev/architect via SSH)
@@ -75,24 +77,62 @@ The `setup-agents` script generates agents for both CLIs from shared templates.
 └── src/                            # Project source code
 ```
 
-## Agent Setup
+## Agent Catalog
 
-Before starting tasks, generate agents for your project:
+Before starting tasks, generate the agent catalog for your project:
 
 ```bash
 ./scripts/setup-agents /path/to/project
 ```
 
-This creates:
+This is a **one-time setup** that creates:
 - `.claude/agents/*.md` - Claude agent files
 - `.kiro/agents/*.json` - Kiro agent files
 
-**Existing agents are skipped** (not overwritten). After bootstrap, you can:
+The agent catalog contains all available agents the PM can choose from. **Existing agents are skipped** (not overwritten). After bootstrap, you can:
 - Edit agent prompts to customize behavior
 - Add new agents for project-specific needs
 - Adjust tools, model, or skills per agent
 
 The generated agents are yours to modify. Re-running `setup-agents` will only add missing agents.
+
+## Dynamic Agent Selection
+
+PM dynamically selects agents based on:
+
+### Task Classification
+
+| Dimension | Options | Impact |
+|-----------|---------|--------|
+| **Complexity** | low / medium / high | Determines planning depth |
+| **Type** | feature / bugfix / refactor / research / hotfix | Suggests agent patterns |
+| **Scope** | single-file / module / cross-cutting | Affects architecture needs |
+| **Familiarity** | known / unknown area | Affects exploration needs |
+
+### Non-Negotiable Principles
+
+| Principle | Requirement | Agent |
+|-----------|-------------|-------|
+| **Validate & Iterate** | All work reviewed before completion | review (ALWAYS) |
+| **Document Decisions** | Capture context for posterity | scribe (ALWAYS for non-trivial) |
+| **Plan Before Code** | Understand approach before implementing | plan (unless trivial) |
+| **Design Before Build** | Complex changes need architecture | architect (when needed) |
+
+### Agent Selection Matrix
+
+| Task Type | explore | plan | architect | dev | test | review | scribe |
+|-----------|:-------:|:----:|:---------:|:---:|:----:|:------:|:------:|
+| **Feature (high)** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Feature (med)** | ? | ✓ | ? | ✓ | ? | ✓ | ✓ |
+| **Feature (low)** | - | ? | - | ✓ | ? | ✓ | ✓ |
+| **Bugfix** | ? | ? | - | ✓ | ✓ | ✓ | ✓ |
+| **Hotfix** | - | - | - | ✓ | ? | ✓ | ? |
+| **Refactor** | ✓ | ✓ | ? | ✓ | ✓ | ✓ | ✓ |
+| **Research** | ✓ | - | - | - | - | ? | ✓ |
+
+**Legend:** ✓ = Always, ? = Conditional, - = Usually skip
+
+PM documents selection rationale in `pm_state.json`, including why agents were selected or skipped.
 
 ## Handoff Naming Convention
 
@@ -213,13 +253,54 @@ PM makes signal-based decisions (NO hardcoded timeouts):
 
 | Signal | Action |
 |--------|--------|
-| Agent STATUS: COMPLETE | Spawn next agent |
+| Agent STATUS: COMPLETE | Spawn next agent in selected workflow |
 | Agent STATUS: NEEDS_REVIEW | Spawn review |
 | Agent STATUS: BLOCKED | Evaluate: unblock or escalate |
 | Review RESULT: PASS | Spawn scribe, complete task |
 | Review RESULT: FAIL | Send follow-up to dev with feedback |
 
 **Review owns retry logic.** No "max 3 attempts" - review decides if more iterations worthwhile.
+
+### pm_state.json Structure
+
+PM tracks dynamic selection and rationale:
+
+```json
+{
+  "status": "ACTIVE",
+  "task_classification": {
+    "complexity": "medium",
+    "type": "feature",
+    "scope": "module",
+    "scope_paths": ["src/api/", "src/models/"],
+    "familiarity": "known"
+  },
+  "available_agents": ["explore", "plan", "architect", "dev", "test", "review", "scribe"],
+  "selected_workflow": {
+    "agents": ["explore", "plan", "dev", "review", "scribe"],
+    "skipped": {
+      "architect": "no new interfaces, extending existing pattern",
+      "test": "no testable acceptance criteria specified"
+    },
+    "rationale": "Medium complexity feature, familiar codebase area",
+    "adaptations": []
+  },
+  "principles_satisfied": {
+    "validate_and_iterate": "pending",
+    "document_decisions": "pending",
+    "plan_before_code": true,
+    "design_before_build": "skipped - no new interfaces"
+  },
+  "current_phase": "dev",
+  "iteration": 1,
+  "spawned_agents": [
+    {"agent": "explore", "window": 1, "status": "complete"},
+    {"agent": "plan", "window": 2, "status": "complete"},
+    {"agent": "dev", "window": 3, "status": "active"}
+  ],
+  "last_checkin": "2025-11-30T10:30:00Z"
+}
+```
 
 ## References
 

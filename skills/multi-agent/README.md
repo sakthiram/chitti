@@ -4,11 +4,13 @@ Orchestrate autonomous agent teams to complete complex tasks with minimal human 
 
 ## What This Skill Does
 
-- PM agent coordinates specialized agents (explore, plan, architect, dev, test, review, scribe)
+- PM agent **dynamically selects** which specialized agents are needed based on task classification
+- Agent catalog provides available agents (explore, plan, architect, dev, test, review, scribe)
 - Signal-based decisions (no hardcoded timeouts)
 - Persistent agent sessions with follow-up instructions
 - Remote coding support (dev/architect via SSH)
 - Standardized handoff documents for agent communication
+- **Non-negotiable principles** enforced (review always, scribe for non-trivial, plan usually)
 - Supports both Claude and Kiro CLI
 
 ## Quick Start
@@ -50,19 +52,32 @@ Orchestrate autonomous agent teams to complete complex tasks with minimal human 
 
 ## Key Concepts
 
-### Agent Setup
+### Agent Catalog
 
-Before starting tasks, generate agents:
+Before starting tasks, generate the agent catalog:
 ```bash
 ./scripts/setup-agents /path/to/project
 ```
 
-Creates both `.claude/agents/*.md` and `.kiro/agents/*.json`. Existing agents are skipped.
+Creates both `.claude/agents/*.md` and `.kiro/agents/*.json`. This is a **one-time setup** that creates all available agents the PM can choose from. Existing agents are skipped.
 
 **After bootstrap, customize freely:**
 - Edit prompts to adjust agent behavior
 - Add project-specific agents
 - Modify tools, model, or skills
+
+### Dynamic Agent Selection
+
+PM dynamically selects agents based on:
+
+1. **Task Classification** - Complexity (low/medium/high), Type (feature/bugfix/refactor/research/hotfix), Scope, Familiarity
+2. **Non-Negotiable Principles**:
+   - **Validate & Iterate** - Review agent ALWAYS runs
+   - **Document Decisions** - Scribe ALWAYS for non-trivial tasks
+   - **Plan Before Code** - Plan agent unless trivial
+   - **Design Before Build** - Architect when needed
+
+PM documents selection rationale in `pm_state.json`, including why agents were selected or skipped.
 
 ### Handoff Documents
 
