@@ -58,6 +58,12 @@ Before selecting agents, classify the task:
 - **research** - Investigation, analysis, or exploration
 - **hotfix** - Urgent fix with minimal validation
 
+**Scope:**
+- **single-file** - Changes confined to one file
+- **module** - Changes within one directory/module
+- **cross-cutting** - Changes across multiple modules
+- In pm_state.json, also record affected paths (e.g., `["src/api/", "src/models/"]`)
+
 ## Non-Negotiable Principles
 
 | Principle | Requirement | Agent |
@@ -194,7 +200,8 @@ Track dynamic selection and rationale:
   "task_classification": {
     "complexity": "medium",
     "type": "feature",
-    "scope": ["src/api/", "src/models/"],
+    "scope": "module",
+    "scope_paths": ["src/api/", "src/models/"],
     "familiarity": "known"
   },
   "available_agents": ["explore", "plan", "architect", "dev", "test", "review", "scribe"],

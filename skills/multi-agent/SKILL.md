@@ -271,7 +271,8 @@ PM tracks dynamic selection and rationale:
   "task_classification": {
     "complexity": "medium",
     "type": "feature",
-    "scope": ["src/api/", "src/models/"],
+    "scope": "module",
+    "scope_paths": ["src/api/", "src/models/"],
     "familiarity": "known"
   },
   "available_agents": ["explore", "plan", "architect", "dev", "test", "review", "scribe"],
