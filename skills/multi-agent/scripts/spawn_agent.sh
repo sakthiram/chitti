@@ -13,7 +13,7 @@ WINDOW=""
 HANDOFF=""
 REMOTE=""
 CWD=""
-CLI="claude"
+CLI="kiro"
 PROJECT_DIR="$(pwd)"
 
 while [[ $# -gt 0 ]]; do

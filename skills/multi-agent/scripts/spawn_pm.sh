@@ -12,7 +12,7 @@ shift || true
 
 # Parse flags
 PROJECT_DIR="$(pwd)"
-CLI="claude"
+CLI="kiro"
 
 while [[ $# -gt 0 ]]; do
   case $1 in

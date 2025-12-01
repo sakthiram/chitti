@@ -20,26 +20,82 @@ This skill enables long-running (4-8 hour) autonomous agent workflows. A PM agen
 - Project-agnostic framework (tasks/skills in project directory)
 - Supports both Claude and Kiro CLI
 
-## Quick Start
+## Getting Started
+
+### Step 1: Setup Agents (One-Time)
+
+Generate the agent catalog for your project:
 
 ```bash
-# 1. Setup agents for your project (creates .claude/agents/ and .kiro/agents/)
 ./scripts/setup-agents /path/to/project
+```
 
-# 2. Start a new task
+This creates `.claude/agents/*.md` and `.kiro/agents/*.json`. Run once per project.
+
+### Step 2: Create a Task
+
+```bash
 ./scripts/task start my-feature --project /path/to/project
+```
 
-# 3. Check status
+This creates `tasks/my-feature/` with a `task.md` template. Edit `task.md` to define:
+
+```markdown
+# Task: my-feature
+
+## Goal
+Add user authentication to the API
+
+## Acceptance Criteria
+- [ ] Login endpoint returns JWT token
+- [ ] Token validation middleware works
+- [ ] Tests pass
+
+## Context
+Using existing Express app in src/api/
+
+## Validation
+```bash
+npm test
+curl -X POST localhost:3000/login -d '{"user":"test"}'
+```
+
+## Agent Config
+```yaml
+dev:
+  cwd: user@remote:/path/to/project   # Optional: remote coding
+```
+```
+
+### Step 3: Monitor Progress
+
+```bash
+# Check status
 ./scripts/task status my-feature
 
-# 4. Trigger PM check-in (or set up cron)
+# Trigger PM check-in (or set up cron)
 ./scripts/pm-check-in.sh my-feature
 
-# 5. Attach to PM session
+# Attach to watch PM work
 ./scripts/task attach my-feature
+```
 
-# 6. Stop task
+### Step 4: Complete
+
+```bash
 ./scripts/task stop my-feature
+```
+
+## Quick Reference
+
+```bash
+./scripts/setup-agents <project>           # One-time: create agents
+./scripts/task start <name> [--project p]  # Create task, start PM
+./scripts/task status <name>               # Check task status
+./scripts/task attach <name>               # Attach to PM session
+./scripts/task logs <name>                 # View task logs
+./scripts/task stop <name>                 # Stop task
+./scripts/pm-check-in.sh <name>            # Trigger PM check-in
 ```
 
 ## CLI Support

@@ -6,6 +6,10 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Track if defaults are being used
+PROJECT_SPECIFIED=false
+CLI_SPECIFIED=false
+
 # Default project to current directory, can override with --project
 PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 TASKS_DIR="${PROJECT_DIR}/tasks"
@@ -18,10 +22,12 @@ while [[ $# -gt 0 ]]; do
       PROJECT_DIR="$2"
       TASKS_DIR="${PROJECT_DIR}/tasks"
       REGISTRY="${PROJECT_DIR}/.task-registry.json"
+      PROJECT_SPECIFIED=true
       shift 2
       ;;
     --cli)
       CLI="$2"
+      CLI_SPECIFIED=true
       shift 2
       ;;
     *)
@@ -30,7 +36,23 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-CLI="${CLI:-claude}"  # Default to claude, can also use "kiro"
+CLI="${CLI:-kiro}"  # Default to kiro
+
+# Show warning if using defaults
+show_defaults_warning() {
+  local warnings=""
+  if [[ "$CLI_SPECIFIED" == "false" ]]; then
+    warnings="cli=kiro"
+  fi
+  if [[ "$PROJECT_SPECIFIED" == "false" ]]; then
+    [[ -n "$warnings" ]] && warnings="$warnings, "
+    warnings="${warnings}project=$(pwd)"
+  fi
+  if [[ -n "$warnings" ]]; then
+    echo "⚠️  Using defaults: ${warnings}"
+    echo ""
+  fi
+}
 
 # Initialize registry if it doesn't exist
 init_registry() {
@@ -44,7 +66,7 @@ cmd_start() {
   local TASK_NAME=$1
 
   if [[ -z "$TASK_NAME" ]]; then
-    echo "Usage: $0 start <task-name> [--project <path>]"
+    echo "Usage: $0 start <task-name> [--project <path>] [--cli claude|kiro]"
     exit 1
   fi
 
@@ -53,6 +75,8 @@ cmd_start() {
     echo "Error: Task name must contain only alphanumeric characters, hyphens, and underscores"
     exit 1
   fi
+
+  show_defaults_warning
 
   init_registry
   local TASK_DIR="${TASKS_DIR}/${TASK_NAME}"
@@ -409,7 +433,7 @@ Usage: $0 [--project <path>] [--cli claude|kiro] <command> [args]
 
 Global Flags:
   --project <path>    Project directory (default: current directory)
-  --cli claude|kiro   CLI to use (default: claude)
+  --cli claude|kiro   CLI to use (default: kiro)
 
 Commands:
   start <name>   Create and start new task
@@ -421,14 +445,10 @@ Commands:
   ui             Launch TUI dashboard
   help           Show this help
 
-CLI Options:
-  claude  - Uses claude CLI with --print for prompts, --agents for inline JSON
-  kiro    - Uses kiro-cli chat, --agent for static agents
-
 Examples:
   $0 start my-feature
   $0 --project /path/to/project start my-feature
-  $0 --cli kiro start my-feature
+  $0 --cli claude start my-feature
   $0 status my-feature
   $0 attach my-feature
 EOF
