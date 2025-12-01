@@ -65,11 +65,12 @@ Skill directory: ${SKILL_DIR}/
 
 Start by reading task.md and planning your approach."
 
+# TODO: Remove --trust-all-tools / --dangerously-skip-permissions once proper tool configs are set up
 # Start CLI with PM agent
 if [[ "$CLI" == "kiro" ]]; then
-  tmux send-keys -t "${SESSION}:pm" "cd ${PROJECT_DIR} && kiro-cli --agent pm" C-m
+  tmux send-keys -t "${SESSION}:pm" "cd ${PROJECT_DIR} && kiro-cli --trust-all-tools --agent pm" C-m
 else
-  tmux send-keys -t "${SESSION}:pm" "cd ${PROJECT_DIR} && claude pm" C-m
+  tmux send-keys -t "${SESSION}:pm" "cd ${PROJECT_DIR} && claude --dangerously-skip-permissions pm" C-m
 fi
 
 # Wait for agent to start, then send context

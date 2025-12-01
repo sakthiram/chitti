@@ -127,12 +127,13 @@ if [[ -n "$REMOTE" ]]; then
   # Create window and spawn remote agent
   tmux new-window -t "${SESSION}:${WINDOW}" -n "${AGENT}"
   
+  # TODO: Remove --trust-all-tools / --dangerously-skip-permissions once proper tool configs are set up
   if [[ "$CLI" == "kiro" ]]; then
     tmux send-keys -t "${SESSION}:${WINDOW}" \
-      "ssh -t ${SSH_TARGET} 'cd ${REMOTE_PATH} && kiro-cli --agent ${AGENT}'" C-m
+      "ssh -t ${SSH_TARGET} 'cd ${REMOTE_PATH} && kiro-cli --trust-all-tools --agent ${AGENT}'" C-m
   else
     tmux send-keys -t "${SESSION}:${WINDOW}" \
-      "ssh -t ${SSH_TARGET} 'cd ${REMOTE_PATH} && claude ${AGENT}'" C-m
+      "ssh -t ${SSH_TARGET} 'cd ${REMOTE_PATH} && claude --dangerously-skip-permissions ${AGENT}'" C-m
   fi
   sleep 2
   tmux send-keys -t "${SESSION}:${WINDOW}" "${CONTEXT}" C-m
@@ -143,10 +144,11 @@ else
   # Local spawn - working directory is project root by default
   tmux new-window -t "${SESSION}:${WINDOW}" -n "${AGENT}" -c "${WORK_DIR}"
   
+  # TODO: Remove --trust-all-tools / --dangerously-skip-permissions once proper tool configs are set up
   if [[ "$CLI" == "kiro" ]]; then
-    tmux send-keys -t "${SESSION}:${WINDOW}" "kiro-cli --agent ${AGENT}" C-m
+    tmux send-keys -t "${SESSION}:${WINDOW}" "kiro-cli --trust-all-tools --agent ${AGENT}" C-m
   else
-    tmux send-keys -t "${SESSION}:${WINDOW}" "claude ${AGENT}" C-m
+    tmux send-keys -t "${SESSION}:${WINDOW}" "claude --dangerously-skip-permissions ${AGENT}" C-m
   fi
   sleep 2
   tmux send-keys -t "${SESSION}:${WINDOW}" "${CONTEXT}" C-m
