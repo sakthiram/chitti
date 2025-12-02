@@ -79,15 +79,27 @@ WORK_DIR="${CWD:-$PROJECT_DIR}"
 
 # Generate timestamp for handoff output
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+OUTPUT_HANDOFF="handoffs/${AGENT}-${TIMESTAMP}.md"
 
-# Build context message
-CONTEXT="Task: ${TASK_NAME}
-Task directory: ${TASK_DIR}/
-Write handoff when done: handoffs/${AGENT}-${TIMESTAMP}.md"
+# Build prompt - for Claude CLI, prefix with @agent to select the agent
+# (Kiro CLI uses --agent flag instead)
+if [[ "$CLI" == "claude" ]]; then
+  AGENT_PREFIX="@${AGENT} "
+else
+  AGENT_PREFIX=""
+fi
 
 if [[ -n "$HANDOFF" ]]; then
-  CONTEXT="${CONTEXT}
-Read instructions from: ${HANDOFF}"
+  PROMPT="${AGENT_PREFIX}You are the ${AGENT} agent for task: ${TASK_NAME}
+Task directory: ${TASK_DIR}/
+Read your instructions from: ${HANDOFF}
+Write your handoff to: ${OUTPUT_HANDOFF}
+Begin now."
+else
+  PROMPT="${AGENT_PREFIX}You are the ${AGENT} agent for task: ${TASK_NAME}
+Task directory: ${TASK_DIR}/
+Write your handoff to: ${OUTPUT_HANDOFF}
+Begin now."
 fi
 
 # Remote spawn
@@ -126,32 +138,47 @@ if [[ -n "$REMOTE" ]]; then
 
   # Create window and spawn remote agent
   tmux new-window -t "${SESSION}:${WINDOW}" -n "${AGENT}"
-  
+
   # TODO: Remove --trust-all-tools / --dangerously-skip-permissions once proper tool configs are set up
+  # C-m must be separate send-keys call
   if [[ "$CLI" == "kiro" ]]; then
     tmux send-keys -t "${SESSION}:${WINDOW}" \
-      "ssh -t ${SSH_TARGET} 'cd ${REMOTE_PATH} && kiro-cli --trust-all-tools --agent ${AGENT}'" C-m
+      "ssh -t ${SSH_TARGET} 'cd ${REMOTE_PATH} && kiro-cli chat --trust-all-tools --agent ${AGENT}'"
+    tmux send-keys -t "${SESSION}:${WINDOW}" C-m
   else
     tmux send-keys -t "${SESSION}:${WINDOW}" \
-      "ssh -t ${SSH_TARGET} 'cd ${REMOTE_PATH} && claude --dangerously-skip-permissions ${AGENT}'" C-m
+      "ssh -t ${SSH_TARGET} 'cd ${REMOTE_PATH} && claude --dangerously-skip-permissions'"
+    tmux send-keys -t "${SESSION}:${WINDOW}" C-m
   fi
-  sleep 2
-  tmux send-keys -t "${SESSION}:${WINDOW}" "${CONTEXT}" C-m
+
+  # Wait for CLI to load, then send the context prompt
+  sleep 8
+  tmux send-keys -t "${SESSION}:${WINDOW}" -l "${PROMPT}"
+  sleep 1
+  tmux send-keys -t "${SESSION}:${WINDOW}" C-m
 
   echo "Spawned remote ${AGENT} agent in window ${WINDOW} on ${SSH_TARGET}"
 
 else
   # Local spawn - working directory is project root by default
   tmux new-window -t "${SESSION}:${WINDOW}" -n "${AGENT}" -c "${WORK_DIR}"
-  
+
   # TODO: Remove --trust-all-tools / --dangerously-skip-permissions once proper tool configs are set up
+  # C-m must be separate send-keys call
   if [[ "$CLI" == "kiro" ]]; then
-    tmux send-keys -t "${SESSION}:${WINDOW}" "kiro-cli --trust-all-tools --agent ${AGENT}" C-m
+    tmux send-keys -t "${SESSION}:${WINDOW}" "kiro-cli chat --trust-all-tools --agent ${AGENT}"
+    tmux send-keys -t "${SESSION}:${WINDOW}" C-m
   else
-    tmux send-keys -t "${SESSION}:${WINDOW}" "claude --dangerously-skip-permissions ${AGENT}" C-m
+    tmux send-keys -t "${SESSION}:${WINDOW}" "claude --dangerously-skip-permissions"
+    tmux send-keys -t "${SESSION}:${WINDOW}" C-m
   fi
-  sleep 2
-  tmux send-keys -t "${SESSION}:${WINDOW}" "${CONTEXT}" C-m
+
+  # Wait for CLI to load, then send the context prompt
+  sleep 6
+  # Use tmux literal mode (-l) to avoid interpreting special chars
+  tmux send-keys -t "${SESSION}:${WINDOW}" -l "${PROMPT}"
+  sleep 1
+  tmux send-keys -t "${SESSION}:${WINDOW}" C-m
 
   echo "Spawned ${AGENT} agent in window ${WINDOW}"
 fi

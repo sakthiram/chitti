@@ -47,10 +47,14 @@ if [[ "$SKIP_SCRIBE" != true ]]; then
   
   if [[ -n "$SCRIBE_WINDOW" ]]; then
     echo "Nudging scribe..."
-    tmux send-keys -t "${SESSION}:${SCRIBE_WINDOW}" "" C-m
-    tmux send-keys -t "${SESSION}:${SCRIBE_WINDOW}" \
-      "Update progress.md now. Scan handoffs/ and artifacts/ for changes since last update. Write to ${TASK_DIR}/progress.md" C-m
-    
+    tmux send-keys -t "${SESSION}:${SCRIBE_WINDOW}" ""
+    tmux send-keys -t "${SESSION}:${SCRIBE_WINDOW}" C-m
+    sleep 1
+    tmux send-keys -t "${SESSION}:${SCRIBE_WINDOW}" -l \
+      "Update progress.md now. Scan handoffs/ and artifacts/ for changes since last update. Write to ${TASK_DIR}/progress.md"
+    sleep 1
+    tmux send-keys -t "${SESSION}:${SCRIBE_WINDOW}" C-m
+
     # Brief wait for scribe to process
     sleep 3
   fi
@@ -58,9 +62,11 @@ fi
 
 # Step 2: Nudge PM
 echo "Nudging PM..."
-tmux send-keys -t "${SESSION}:pm" "" C-m
-tmux send-keys -t "${SESSION}:pm" \
-  "# PM Check-in: ${TIMESTAMP}
+tmux send-keys -t "${SESSION}:pm" ""
+tmux send-keys -t "${SESSION}:pm" C-m
+sleep 1
+
+PM_MESSAGE="# PM Check-in: ${TIMESTAMP}
 
 Check status and make decisions:
 
@@ -78,7 +84,11 @@ Check status and make decisions:
    - Mark task BLOCKED if truly stuck
 6. Update pm_state.json with last_checkin timestamp
 
-Current time: ${TIMESTAMP}" C-m
+Current time: ${TIMESTAMP}"
+
+tmux send-keys -t "${SESSION}:pm" -l "${PM_MESSAGE}"
+sleep 1
+tmux send-keys -t "${SESSION}:pm" C-m
 
 # Update last_checkin in pm_state.json
 if [[ -f "${TASK_DIR}/pm_state.json" ]]; then

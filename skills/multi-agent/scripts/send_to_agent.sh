@@ -69,7 +69,13 @@ else
 fi
 
 # Send to agent
-tmux send-keys -t "${SESSION}:${WINDOW}" "" C-m
-tmux send-keys -t "${SESSION}:${WINDOW}" "${INSTRUCTION}" C-m
+# First send empty enter to ensure clean prompt, then send instruction
+tmux send-keys -t "${SESSION}:${WINDOW}" ""
+tmux send-keys -t "${SESSION}:${WINDOW}" C-m
+sleep 1
+# Use -l for literal mode to preserve multiline text
+tmux send-keys -t "${SESSION}:${WINDOW}" -l "${INSTRUCTION}"
+sleep 1
+tmux send-keys -t "${SESSION}:${WINDOW}" C-m
 
 echo "Sent instructions to ${AGENT} agent (window ${WINDOW})"
