@@ -35,10 +35,27 @@ This creates `.claude/agents/*.md` and `.kiro/agents/*.json`. Run once per proje
 ### Step 2: Create a Task
 
 ```bash
-./scripts/task start my-feature --project /path/to/project
+# Interactive (prompts for goal, criteria, context)
+./scripts/task --project /path/to/project create my-feature
+
+# Non-interactive (agent bootstraps task.md from goal)
+./scripts/task --project /path/to/project --goal "Add user authentication" create my-feature
+
+# Non-interactive (use existing task.md file)
+./scripts/task --project /path/to/project --task-file ./my-task.md create my-feature
 ```
 
-This creates `tasks/my-feature/` with a `task.md` template. Edit `task.md` to define:
+This creates `tasks/my-feature/` with directories and a `task.md` file.
+
+### Step 3: Refine task.md (Optional)
+
+Edit `task.md` to add agent configuration, especially for remote coding:
+
+```bash
+vi tasks/my-feature/task.md
+```
+
+Example task.md with agent config:
 
 ```markdown
 # Task: my-feature
@@ -63,11 +80,28 @@ curl -X POST localhost:3000/login -d '{"user":"test"}'
 ## Agent Config
 ```yaml
 dev:
-  cwd: user@remote:/path/to/project   # Optional: remote coding
+  cwd: user@remote:/path/to/project   # Remote coding via SSH
+  skills: [my-project-skill]
+
+architect:
+  cwd: user@remote:/path/to/project
+
+test:
+  cwd: /local/path                    # Device access is always local
+  skills: [device-access]
 ```
 ```
 
-### Step 3: Monitor Progress
+### Step 4: Start PM
+
+```bash
+./scripts/task --project /path/to/project start my-feature
+
+# Or with different CLI
+./scripts/task --project /path/to/project --cli claude start my-feature
+```
+
+### Step 5: Monitor Progress
 
 ```bash
 # Check status
@@ -80,7 +114,7 @@ dev:
 ./scripts/task attach my-feature
 ```
 
-### Step 4: Complete
+### Step 6: Complete
 
 ```bash
 ./scripts/task stop my-feature
@@ -89,13 +123,21 @@ dev:
 ## Quick Reference
 
 ```bash
-./scripts/setup-agents <project>           # One-time: create agents
-./scripts/task start <name> [--project p]  # Create task, start PM
-./scripts/task status <name>               # Check task status
-./scripts/task attach <name>               # Attach to PM session
-./scripts/task logs <name>                 # View task logs
-./scripts/task stop <name>                 # Stop task
-./scripts/pm-check-in.sh <name>            # Trigger PM check-in
+./scripts/setup-agents <project>                    # One-time: create agents
+./scripts/task create <name> [--goal "text"]        # Create task (no PM)
+./scripts/task start <name> [--cli claude|kiro]     # Start PM for task
+./scripts/task status <name>                        # Check task status
+./scripts/task attach <name>                        # Attach to PM session
+./scripts/task logs <name>                          # View task logs
+./scripts/task stop <name>                          # Stop task
+./scripts/pm-check-in.sh <name>                     # Trigger PM check-in
+```
+
+**Typical workflow:**
+```bash
+./scripts/task --project /my/project create my-task --goal "Fix bug X"
+vi /my/project/tasks/my-task/task.md   # Refine, add agent config
+./scripts/task --project /my/project --cli claude start my-task
 ```
 
 ## CLI Support
@@ -174,6 +216,39 @@ PM dynamically selects agents based on:
 | **Plan Before Code** | Understand approach before implementing | plan (unless trivial) |
 | **Design Before Build** | Complex changes need architecture | architect (when needed) |
 
+### PM Agent Delegation Rules (CRITICAL)
+
+**PM orchestrates, PM does NOT investigate.**
+
+| PM Should | PM Should NOT |
+|-----------|---------------|
+| Create handoff documents | Read logs directly |
+| Spawn explore/dev agents | Run grep/search commands |
+| Monitor agent progress | Analyze code/data itself |
+| Make workflow decisions | Debug issues directly |
+| Summarize agent findings | Write implementation code |
+
+**If PM finds itself investigating directly (reading logs, running searches), it should STOP and spawn an explore agent instead.**
+
+### Handoff Best Practices
+
+Every handoff to an agent should include:
+
+1. **Task description** - Clear, specific goal
+2. **Skills reference from task.md** - Include skills the agent should use:
+   ```yaml
+   Skills available:
+     skills: [amelia-logs, amelia-athena]
+   ```
+3. **Search commands** - Specific commands to run
+4. **Expected output location** - Where to write findings
+5. **Done criteria** - How agent knows it's finished
+
+**When user corrects PM:**
+- Update handoff with correction
+- Spawn NEW agent with corrected instructions
+- Don't try to fix it in current PM context
+
 ### Agent Selection Matrix
 
 | Task Type | explore | plan | architect | dev | test | review | scribe |
@@ -217,12 +292,22 @@ All handoffs use: `{content}-{YYYYMMDD}-{HHMMSS}.md`
 
 **`scripts/task`** - Main CLI
 ```bash
-./scripts/task start <name> [--project <path>] [--cli claude|kiro]
+# Create task (does NOT start PM)
+./scripts/task create <name> [--goal <text>] [--task-file <path>]
+
+# Start PM for existing task
+./scripts/task start <name> [--cli claude|kiro]
+
+# Other commands
 ./scripts/task status <name>
 ./scripts/task list
 ./scripts/task attach <name>
 ./scripts/task stop <name>
 ./scripts/task logs <name>
+
+# Global flags (before command)
+--project <path>      # Project directory
+--cli claude|kiro     # CLI to use (default: kiro)
 ```
 
 ### PM-Facing
