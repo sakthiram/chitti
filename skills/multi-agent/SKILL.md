@@ -249,6 +249,37 @@ Every handoff to an agent should include:
 - Spawn NEW agent with corrected instructions
 - Don't try to fix it in current PM context
 
+### Continuation vs Fresh Agent
+
+When spawning same agent type again, PM decides: **continue existing session** or **spawn fresh agent**.
+
+| Situation | Action | Reason |
+|-----------|--------|--------|
+| Minor correction (same topic) | `send_to_agent.sh` | Preserve context |
+| Follow-up question | `send_to_agent.sh` | Build on findings |
+| Different topic/investigation | `spawn_agent.sh --topic X` | Fresh perspective |
+| Major pivot in approach | `spawn_agent.sh --topic X` | Avoid context pollution |
+| Agent already exited | `spawn_agent.sh --topic X` | Must spawn new |
+| Context overflow risk | `spawn_agent.sh` with cliff notes | Summarize previous work |
+
+**Parallel agents**: Multiple agents of same type can run simultaneously on different topics (e.g., `explore-logs` and `explore-athena`).
+
+### Cliff Notes for Fresh Agents
+
+When spawning a fresh agent that continues previous work, include a summary in the handoff:
+
+```markdown
+## Previous Findings (see: handoffs/explore-hotplug-20251201.md)
+- Cable physically connected during failures
+- Headset client disconnected at 18:16:51 UTC
+- ROS service timeouts observed
+
+## Your Task
+Now investigate set_feature_state failures...
+```
+
+This gives the new agent context without full history.
+
 ### Agent Selection Matrix
 
 | Task Type | explore | plan | architect | dev | test | review | scribe |
@@ -314,13 +345,23 @@ All handoffs use: `{content}-{YYYYMMDD}-{HHMMSS}.md`
 
 **`scripts/spawn_agent.sh`** - Spawn agent in tmux window
 ```bash
-# Local agent (cwd defaults to project root)
-./scripts/spawn_agent.sh --task <name> --agent <type> --window <N> [--handoff <file>]
+# Local agent with topic (window name: explore-hotplug)
+./scripts/spawn_agent.sh --task <name> --agent explore --window 7 \
+  --topic hotplug --handoff <file>
+
+# Dev agent with version topic (window name: dev-v2)
+./scripts/spawn_agent.sh --task <name> --agent dev --window 3 \
+  --topic v2 --handoff <file>
 
 # Remote agent (dev/architect only)
 ./scripts/spawn_agent.sh --task <name> --agent dev --window 3 \
-  --remote user@host:/path --handoff <file>
+  --remote user@host:/path --topic impl --handoff <file>
 ```
+
+**Topic examples:**
+- `explore-hotplug`, `explore-setfeat`, `explore-athena`
+- `dev-v1`, `dev-v2`, `dev-auth`
+- `plan-initial`, `plan-revised`
 
 **`scripts/send_to_agent.sh`** - Send follow-up to existing agent
 ```bash
@@ -378,15 +419,19 @@ Set up cron for periodic check-ins:
 
 Session: `task-{task-name}-pm`
 
-| Window | Agent | Purpose |
-|--------|-------|---------|
+| Window | Name | Purpose |
+|--------|------|---------|
 | 0 | pm | Orchestrator |
-| 1 | explore | Research |
+| 1 | explore-hotplug | Research (first topic) |
 | 2 | plan | Design |
-| 3 | dev | Implementation |
+| 3 | dev-v1 | Implementation (first iteration) |
 | 4 | test | Validation |
 | 5 | review | Quality gate |
 | 6 | scribe | Progress tracking |
+| 7 | explore-setfeat | Research (second topic) |
+| 8 | dev-v2 | Implementation (after review) |
+
+Window names use format `{agent}-{topic}` when topic is provided.
 
 ## Decision Framework
 
@@ -435,9 +480,10 @@ PM tracks dynamic selection and rationale:
   "current_phase": "dev",
   "iteration": 1,
   "spawned_agents": [
-    {"agent": "explore", "window": 1, "status": "complete"},
-    {"agent": "plan", "window": 2, "status": "complete"},
-    {"agent": "dev", "window": 3, "status": "active"}
+    {"agent": "explore", "topic": "hotplug", "window": 1, "status": "complete", "handoff": "explore-20251201-085449.md"},
+    {"agent": "explore", "topic": "setfeat", "window": 7, "status": "complete", "handoff": "explore-20251201-090753.md"},
+    {"agent": "plan", "window": 2, "status": "complete", "handoff": "plan-20251201-100000.md"},
+    {"agent": "dev", "topic": "v1", "window": 3, "status": "active"}
   ],
   "last_checkin": "2025-11-30T10:30:00Z"
 }

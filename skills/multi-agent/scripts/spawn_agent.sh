@@ -15,6 +15,7 @@ REMOTE=""
 CWD=""
 CLI="kiro"
 PROJECT_DIR="$(pwd)"
+TOPIC=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -26,6 +27,7 @@ while [[ $# -gt 0 ]]; do
     --cwd) CWD="$2"; shift 2 ;;
     --cli) CLI="$2"; shift 2 ;;
     --project) PROJECT_DIR="$2"; shift 2 ;;
+    --topic) TOPIC="$2"; shift 2 ;;
     *)
       # Positional args for backward compat: task agent window
       if [[ -z "$TASK_NAME" ]]; then TASK_NAME="$1"
@@ -41,6 +43,7 @@ if [[ -z "$TASK_NAME" ]] || [[ -z "$AGENT" ]] || [[ -z "$WINDOW" ]]; then
   echo "Usage: $0 --task <name> --agent <type> --window <num> [options]"
   echo ""
   echo "Options:"
+  echo "  --topic <short-name>       Topic for window name (e.g., explore-hotplug)"
   echo "  --handoff <file>           Handoff file with instructions"
   echo "  --remote user@host:/path   Remote SSH target for dev/architect"
   echo "  --cwd <path>               Working directory (default: project root)"
@@ -51,6 +54,13 @@ if [[ -z "$TASK_NAME" ]] || [[ -z "$AGENT" ]] || [[ -z "$WINDOW" ]]; then
   echo "  claude: <project>/.claude/agents/<agent>.md"
   echo "  kiro:   <project>/.kiro/agents/<agent>.json"
   exit 1
+fi
+
+# Window name: agent-topic if topic provided, else just agent
+if [[ -n "$TOPIC" ]]; then
+  WINDOW_NAME="${AGENT}-${TOPIC}"
+else
+  WINDOW_NAME="${AGENT}"
 fi
 
 TASK_DIR="${PROJECT_DIR}/tasks/${TASK_NAME}"
@@ -139,7 +149,7 @@ if [[ -n "$REMOTE" ]]; then
   fi
 
   # Create window and spawn remote agent
-  tmux new-window -t "${SESSION}:${WINDOW}" -n "${AGENT}"
+  tmux new-window -t "${SESSION}:${WINDOW}" -n "${WINDOW_NAME}"
 
   # TODO: Remove --trust-all-tools / --dangerously-skip-permissions once proper tool configs are set up
   # C-m must be separate send-keys call
@@ -163,7 +173,7 @@ if [[ -n "$REMOTE" ]]; then
 
 else
   # Local spawn - working directory is project root by default
-  tmux new-window -t "${SESSION}:${WINDOW}" -n "${AGENT}" -c "${WORK_DIR}"
+  tmux new-window -t "${SESSION}:${WINDOW}" -n "${WINDOW_NAME}" -c "${WORK_DIR}"
 
   # TODO: Remove --trust-all-tools / --dangerously-skip-permissions once proper tool configs are set up
   # C-m must be separate send-keys call
@@ -182,5 +192,5 @@ else
   sleep 1
   tmux send-keys -t "${SESSION}:${WINDOW}" C-m
 
-  echo "Spawned ${AGENT} agent in window ${WINDOW}"
+  echo "Spawned ${WINDOW_NAME} agent in window ${WINDOW}"
 fi
