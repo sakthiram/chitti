@@ -8,6 +8,7 @@ AGENT=""
 HANDOFF=""
 MESSAGE=""
 PROJECT_DIR="$(pwd)"
+CLI="kiro"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -16,6 +17,7 @@ while [[ $# -gt 0 ]]; do
     --handoff) HANDOFF="$2"; shift 2 ;;
     --message) MESSAGE="$2"; shift 2 ;;
     --project) PROJECT_DIR="$2"; shift 2 ;;
+    --cli) CLI="$2"; shift 2 ;;
     *)
       # Positional: task agent handoff
       if [[ -z "$TASK_NAME" ]]; then TASK_NAME="$1"
@@ -55,12 +57,21 @@ fi
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 INSTRUCTION=""
 
+# For Claude CLI, instruct to use subagent (Kiro CLI already has agent context)
+if [[ "$CLI" == "claude" ]]; then
+  AGENT_INSTRUCTION="Use the ${AGENT} subagent to complete the task.
+
+"
+else
+  AGENT_INSTRUCTION=""
+fi
+
 if [[ -n "$HANDOFF" ]]; then
-  INSTRUCTION="Read and execute new instructions: ${HANDOFF}
+  INSTRUCTION="${AGENT_INSTRUCTION}Read and execute new instructions: ${HANDOFF}
 
 Remember to write your output to: handoffs/${AGENT}-${TIMESTAMP}.md"
 elif [[ -n "$MESSAGE" ]]; then
-  INSTRUCTION="${MESSAGE}
+  INSTRUCTION="${AGENT_INSTRUCTION}${MESSAGE}
 
 Write output to: handoffs/${AGENT}-${TIMESTAMP}.md"
 else

@@ -81,22 +81,24 @@ WORK_DIR="${CWD:-$PROJECT_DIR}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 OUTPUT_HANDOFF="handoffs/${AGENT}-${TIMESTAMP}.md"
 
-# Build prompt - for Claude CLI, prefix with @agent to select the agent
+# Build prompt - for Claude CLI, instruct to use subagent
 # (Kiro CLI uses --agent flag instead)
 if [[ "$CLI" == "claude" ]]; then
-  AGENT_PREFIX="@${AGENT} "
+  AGENT_INSTRUCTION="Use the ${AGENT} subagent to complete the task.
+
+"
 else
-  AGENT_PREFIX=""
+  AGENT_INSTRUCTION=""
 fi
 
 if [[ -n "$HANDOFF" ]]; then
-  PROMPT="${AGENT_PREFIX}You are the ${AGENT} agent for task: ${TASK_NAME}
+  PROMPT="${AGENT_INSTRUCTION}You are the ${AGENT} agent for task: ${TASK_NAME}
 Task directory: ${TASK_DIR}/
 Read your instructions from: ${HANDOFF}
 Write your handoff to: ${OUTPUT_HANDOFF}
 Begin now."
 else
-  PROMPT="${AGENT_PREFIX}You are the ${AGENT} agent for task: ${TASK_NAME}
+  PROMPT="${AGENT_INSTRUCTION}You are the ${AGENT} agent for task: ${TASK_NAME}
 Task directory: ${TASK_DIR}/
 Write your handoff to: ${OUTPUT_HANDOFF}
 Begin now."
