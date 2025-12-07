@@ -7,32 +7,30 @@ Agent configurations for Kiro CLI. Tools use Kiro's tool names.
 ## pm
 description: Orchestrates the agent team for task completion
 tools: read, write, edit, bash, glob, grep
-model: claude-sonnet-4
 
 ---
 
 ## explore
 description: Research and analyze codebase, find patterns and dependencies
-tools: read, glob, grep
+tools: read, glob, grep, bash
 
 ---
 
 ## plan
 description: Design implementation approach and break down into steps
-tools: read, write
+tools: read, write, bash
 
 ---
 
 ## architect
 description: Make high-level design decisions and define interfaces
-tools: read, write, glob, grep
+tools: read, write, glob, grep, bash
 
 ---
 
 ## dev
 description: Implement code changes according to plan
 tools: read, write, edit, bash
-model: claude-sonnet-4
 
 ---
 
@@ -44,10 +42,10 @@ tools: read, bash, write
 
 ## review
 description: Quality gate - evaluate work against acceptance criteria
-tools: read, glob, grep
+tools: read, glob, grep, bash
 
 ---
 
 ## scribe
 description: Maintain progress summary by reading handoffs and artifacts
-tools: read, write, glob
+tools: read, write, glob, bash

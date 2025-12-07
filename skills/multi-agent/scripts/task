@@ -529,6 +529,40 @@ cmd_logs() {
   echo "View: cat ${TASK_DIR}/handoffs/<filename>"
 }
 
+cmd_cleanup() {
+  local TASK_NAME=$1
+  if [[ -z "$TASK_NAME" ]]; then
+    echo "Usage: $0 cleanup <task-name>"
+    exit 1
+  fi
+
+  local TASK_DIR="${TASKS_DIR}/${TASK_NAME}"
+  if [[ ! -d "$TASK_DIR" ]]; then
+    echo "Error: Task not found: ${TASK_NAME}"
+    exit 1
+  fi
+
+  # Stop if running
+  local SESSION="task-${TASK_NAME}-pm"
+  if tmux has-session -t "$SESSION" 2>/dev/null; then
+    tmux kill-session -t "$SESSION"
+    echo "Stopped tmux session: ${SESSION}"
+  fi
+
+  # Clean handoffs and scratchpad
+  rm -rf "${TASK_DIR}/handoffs/"* "${TASK_DIR}/scratchpad/"*
+  
+  # Reset pm_state.json
+  cat > "${TASK_DIR}/pm_state.json" <<EOF
+{"status":"CREATED","current_phase":"init","spawned_agents":[],"iteration":0,"last_checkin":null,"cli":"${CLI}"}
+EOF
+
+  # Remove progress.md if exists
+  rm -f "${TASK_DIR}/progress.md"
+
+  echo "Cleaned up task '${TASK_NAME}' - handoffs, scratchpad, and pm_state reset"
+}
+
 cmd_ui() {
   bash "${SCRIPT_DIR}/tui"
 }
@@ -554,6 +588,7 @@ Commands:
   status <name>  Show task status
   attach <name>  Attach to PM tmux session
   stop <name>    Stop task and cleanup
+  cleanup <name> Reset task state (clear handoffs, scratchpad, pm_state)
   logs <name>    View handoffs and artifacts
   ui             Launch TUI dashboard
   help           Show this help
@@ -583,14 +618,15 @@ EOF
 
 # Main dispatch
 case "$1" in
-  create) cmd_create "$2" ;;
-  start)  cmd_start "$2" ;;
-  list)   cmd_list ;;
-  status) cmd_status "$2" ;;
-  attach) cmd_attach "$2" ;;
-  stop)   cmd_stop "$2" ;;
-  logs)   cmd_logs "$2" ;;
-  ui)     cmd_ui ;;
+  create)  cmd_create "$2" ;;
+  start)   cmd_start "$2" ;;
+  list)    cmd_list ;;
+  status)  cmd_status "$2" ;;
+  attach)  cmd_attach "$2" ;;
+  stop)    cmd_stop "$2" ;;
+  cleanup) cmd_cleanup "$2" ;;
+  logs)    cmd_logs "$2" ;;
+  ui)      cmd_ui ;;
   help|--help|-h) cmd_help ;;
   *)
     echo "Error: Unknown command '$1'"

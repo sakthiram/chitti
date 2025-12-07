@@ -104,7 +104,7 @@ fi
 if [[ -n "$HANDOFF" ]]; then
   PROMPT="${AGENT_INSTRUCTION}You are the ${AGENT} agent for task: ${TASK_NAME}
 Task directory: ${TASK_DIR}/
-Read your instructions from: ${HANDOFF}
+Read your instructions from: handoffs/${HANDOFF}
 Write your handoff to: ${OUTPUT_HANDOFF}
 Begin now."
 else
@@ -186,7 +186,7 @@ else
   fi
 
   # Wait for CLI to load, then send the context prompt
-  sleep 6
+  sleep 12
   # Use tmux literal mode (-l) to avoid interpreting special chars
   tmux send-keys -t "${SESSION}:${WINDOW}" -l "${PROMPT}"
   sleep 1

@@ -58,6 +58,9 @@ fi
 # Create tmux session with project as cwd
 tmux new-session -s "$SESSION" -n "pm" -d -c "$PROJECT_DIR"
 
+# Wait for shell to fully initialize
+sleep 3
+
 # Build simple prompt - agent gets system prompt from agent file, skill provides scripts
 # Include CLI so PM uses same CLI when spawning agents
 PROMPT="You are the PM agent for task: ${TASK_NAME}
@@ -66,20 +69,19 @@ CLI: ${CLI}
 Use the multi-agent skill to orchestrate this task. Begin now."
 
 # TODO: Remove --trust-all-tools / --dangerously-skip-permissions once proper tool configs are set up
-# Start CLI (C-m must be separate send-keys call)
+# Start CLI - use send-keys with separate C-m
 if [[ "$CLI" == "kiro" ]]; then
   tmux send-keys -t "${SESSION}:pm" "cd ${PROJECT_DIR} && kiro-cli chat --trust-all-tools --agent pm"
-  tmux send-keys -t "${SESSION}:pm" C-m
 else
   tmux send-keys -t "${SESSION}:pm" "cd ${PROJECT_DIR} && claude --dangerously-skip-permissions"
-  tmux send-keys -t "${SESSION}:pm" C-m
 fi
+sleep 0.2
+tmux send-keys -t "${SESSION}:pm" C-m
 
-# Wait for CLI to load, then send the context prompt
-sleep 6
-# Use tmux literal mode (-l) to avoid interpreting special chars
+# Wait for CLI to load (kiro-cli needs ~15-20s due to midway auth)
+sleep 20
 tmux send-keys -t "${SESSION}:pm" -l "${PROMPT}"
-sleep 1
+sleep 0.2
 tmux send-keys -t "${SESSION}:pm" C-m
 
 echo "PM session started: ${SESSION}"

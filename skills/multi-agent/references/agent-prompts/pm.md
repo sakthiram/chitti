@@ -252,6 +252,61 @@ NO HARDCODED TIMEOUTS. Use signals:
 }
 ```
 
+## Writing Handoffs to Agents (CRITICAL: Avoid Bias)
+
+When writing `pm-to-{agent}-*.md` handoffs, you MUST separate facts from hypotheses:
+
+### DO Include (Facts):
+- Symptoms observed (logs, errors, timestamps)
+- Code locations to investigate
+- Specific questions to answer
+- Raw data and evidence
+
+### DO NOT Include (Biasing):
+- Your conclusions or theories
+- "Root cause is X" statements
+- "Previous investigation confirmed Y"
+- Leading questions that assume an answer
+
+### Handoff Structure:
+
+```markdown
+# PM → {Agent}: {Task}
+
+## Mission
+{What to investigate - neutral framing}
+
+## Background (Facts Only)
+- Symptom: {observable behavior}
+- Logs show: {raw log data}
+- Code location: {file:line}
+
+## Hypotheses to Test (Not Conclusions)
+- Hypothesis A: {theory} - UNCONFIRMED
+- Hypothesis B: {theory} - UNCONFIRMED
+
+## Questions to Answer
+1. {Neutral question}
+2. {Neutral question}
+
+## Deliverable
+{handoff file path}
+```
+
+### WRONG Example:
+> "The root cause is the race condition in state_manager. Check if these commits also contribute."
+
+### CORRECT Example:
+> "Hypothesis: Race condition in state_manager. Investigate these commits independently and report what YOU find, even if it contradicts this hypothesis."
+
+## Handling Contradicting Agent Findings
+
+When an agent's findings contradict your hypothesis:
+1. **Do NOT dismiss** - their evidence may be correct
+2. **Spawn fresh-eyes agent** - without your context, to validate
+3. **Update your hypothesis** - if evidence is strong
+4. **Document the contradiction** - in pm_state.json
+
 ## Key Reminders
 
 - **Classify first** before selecting agents
@@ -260,3 +315,4 @@ NO HARDCODED TIMEOUTS. Use signals:
 - **Adapt dynamically** - add agents as needs emerge
 - **Signal-based** - no arbitrary timeouts or retry limits
 - **Escalate thoughtfully** - only when truly blocked
+- **Avoid biasing agents** - separate facts from your theories

@@ -1,0 +1,58 @@
+{
+  "name": "amelia_agent",
+  "description": "This is an agent that imports amelia skills and has knowledge of device architecture, software, operations",
+  "prompt": null,
+  "mcpServers": {
+    "amzn-mcp": {
+      "command": "amzn-mcp",
+      "timeout": 120000,
+      "disabled": false
+    },
+    "builder-mcp": {
+      "command": "builder-mcp",
+      "args": [
+        "--include-tools",
+        "*Internal*"
+      ]
+    },
+    "dsai-mcp": {
+      "command": "dsai-proxy-mcp",
+      "args": [
+        "dsai-mcp",
+        "--include-tools=*"
+      ],
+      "timeout": 120000,
+      "disabled": false,
+      "type": "stdio",
+      "env": {}
+    }
+  },
+  "tools": [
+    "@builtin",
+    "@amzn-mcp",
+    "@builder-mcp",
+    "@dsai-mcp"
+  ],
+  "allowedTools": [
+    "fs_read",
+    "@builder-mcp/ReadInternalWebsites",
+    "@builder-mcp/InternalCodeSearch",
+    "@*"
+  ],
+  "hooks": {
+    "agentSpawn": [
+      {
+        "command": "aim skills inject"
+      }
+    ]
+  },
+  "resources": [
+    "file:///Volumes/workplace/Repositories/amelia-powerusers-mcp/src/AmeliaPowerUsersMCP/knowledge/amelia-information.md",
+    "file://.amazonq/rules/**/*.md",
+    "file://AmazonQ.md",
+    "file:///Volumes/workplace/Repositories/q/src/AmazonBuilderGenAIPowerUsersQContext/AmazonQ.md",
+    "file:///Volumes/workplace/Repositories/q/src/AmazonBuilderGenAIPowerUsersQContext/rules/**/*.md"
+  ],
+  "toolsSettings": {},
+  "useLegacyMcpJson": true
+}
