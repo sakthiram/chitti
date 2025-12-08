@@ -6,7 +6,36 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(dirname "$SCRIPT_DIR")"
-PROJECT_DIR="${1:-$(pwd)}"
+
+# Parse arguments
+FORCE=false
+PROJECT_DIR=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --force|-f) FORCE=true; shift ;;
+    --help|-h)
+      echo "Generate agent files for a project"
+      echo ""
+      echo "Usage: $0 [options] <project-dir>"
+      echo ""
+      echo "Options:"
+      echo "  --force, -f    Overwrite existing agent files"
+      echo "  --help, -h     Show this help"
+      echo ""
+      echo "If project-dir is not specified, uses current directory."
+      exit 0
+      ;;
+    *)
+      if [[ -z "$PROJECT_DIR" ]]; then
+        PROJECT_DIR="$1"
+      fi
+      shift
+      ;;
+  esac
+done
+
+PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 
 PROMPTS_DIR="${SKILL_DIR}/references/agent-prompts"
 CLAUDE_DEFS="${SKILL_DIR}/references/claude_agents.md"
@@ -37,7 +66,7 @@ while IFS= read -r line; do
       agent_file="${PROJECT_DIR}/.claude/agents/${current_agent}.md"
       prompt_file="${PROMPTS_DIR}/${current_agent}.md"
       
-      if [[ -f "$agent_file" ]]; then
+      if [[ -f "$agent_file" ]] && [[ "$FORCE" != "true" ]]; then
         echo "  Skip: ${current_agent}.md (exists)"
       elif [[ ! -f "$prompt_file" ]]; then
         echo "  Skip: ${current_agent}.md (no prompt file)"
@@ -80,7 +109,7 @@ if [[ -n "$current_agent" ]]; then
   agent_file="${PROJECT_DIR}/.claude/agents/${current_agent}.md"
   prompt_file="${PROMPTS_DIR}/${current_agent}.md"
   
-  if [[ -f "$agent_file" ]]; then
+  if [[ -f "$agent_file" ]] && [[ "$FORCE" != "true" ]]; then
     echo "  Skip: ${current_agent}.md (exists)"
   elif [[ ! -f "$prompt_file" ]]; then
     echo "  Skip: ${current_agent}.md (no prompt file)"
@@ -117,7 +146,7 @@ while IFS= read -r line; do
       agent_file="${PROJECT_DIR}/.kiro/agents/${current_agent}.json"
       prompt_file="${PROMPTS_DIR}/${current_agent}.md"
       
-      if [[ -f "$agent_file" ]]; then
+      if [[ -f "$agent_file" ]] && [[ "$FORCE" != "true" ]]; then
         echo "  Skip: ${current_agent}.json (exists)"
       elif [[ ! -f "$prompt_file" ]]; then
         echo "  Skip: ${current_agent}.json (no prompt file)"
@@ -171,7 +200,7 @@ if [[ -n "$current_agent" ]]; then
   agent_file="${PROJECT_DIR}/.kiro/agents/${current_agent}.json"
   prompt_file="${PROMPTS_DIR}/${current_agent}.md"
   
-  if [[ -f "$agent_file" ]]; then
+  if [[ -f "$agent_file" ]] && [[ "$FORCE" != "true" ]]; then
     echo "  Skip: ${current_agent}.json (exists)"
   elif [[ ! -f "$prompt_file" ]]; then
     echo "  Skip: ${current_agent}.json (no prompt file)"
