@@ -381,17 +381,32 @@ See research at: artifacts/explore-hotplug/analysis.md
 
 **`scripts/spawn_agent.sh`** - Spawn agent in tmux window
 ```bash
+# NOTE: --handoff and --cli are REQUIRED
+
 # Local agent with topic (window name: explore-hotplug)
 ./scripts/spawn_agent.sh --task <name> --agent explore --window 7 \
-  --topic hotplug --handoff <file>
+  --topic hotplug --handoff <file> --cli claude
 
 # Dev agent with version topic (window name: dev-v2)
 ./scripts/spawn_agent.sh --task <name> --agent dev --window 3 \
-  --topic v2 --handoff <file>
+  --topic v2 --handoff <file> --cli kiro
 
-# Remote agent (dev/architect only)
+# Remote agent - creates window in single remote session
+# Session name: task-{name}-agents (ONE session per task, all agents share it)
 ./scripts/spawn_agent.sh --task <name> --agent dev --window 3 \
-  --remote user@host:/path --topic impl --handoff <file>
+  --remote user@host:/path --topic impl --handoff <file> --cli claude
+```
+
+**`scripts/send_to_remote_agent.sh`** - Send follow-up to remote agent
+```bash
+./scripts/send_to_remote_agent.sh --task <name> --window 3 \
+  --remote user@host --message "your follow-up message"
+```
+
+**`scripts/sync_from_remote.sh`** - Pull results from remote agent
+```bash
+# REQUIRED after remote agent completes
+./scripts/sync_from_remote.sh --task <name> --remote user@host:/path
 ```
 
 **Topic examples:**
@@ -478,20 +493,59 @@ A few minutes reviewing the plan prevents hours of wasted implementation.
 
 ## Tmux Session Structure
 
+### Local Session
+
 Session: `task-{task-name}-pm`
 
+Window numbers are **sequential based on spawn order**, not tied to agent roles:
+
+| Window | Purpose |
+|--------|---------|
+| 0 | PM (always) |
+| 1, 2, 3, ... | Agents in spawn order |
+
+Example with topics:
 | Window | Name | Purpose |
 |--------|------|---------|
-| 0 | pm | Orchestrator + progress tracking |
-| 1 | explore-hotplug | Research (first topic) |
-| 2 | plan | Design |
-| 3 | dev-v1 | Implementation (first iteration) |
-| 4 | test | Validation |
-| 5 | review | Quality gate |
-| 6 | explore-setfeat | Research (second topic) |
-| 7 | dev-v2 | Implementation (after review) |
+| 0 | pm | Orchestrator |
+| 1 | explore-logs | First spawned agent |
+| 2 | plan | Second spawned |
+| 3 | dev-v1 | Third spawned |
+| 4 | explore-athena | Fourth spawned (parallel explore) |
 
 Window names use format `{agent}-{topic}` when topic is provided.
+
+### Remote Agent Architecture
+
+All remote agents for a task share **ONE tmux session** on the remote host:
+
+- **Session name:** `task-{task-name}-agents`
+- **Each agent gets its own window** (sequential, based on spawn order)
+- **No local window created** - user monitors via iTerm
+
+**File Transfer (No automatic sync):**
+1. **At spawn:** Handoff file is copied to remote via scp (automatic)
+2. **After completion:** PM must run `sync_from_remote.sh` to pull results
+
+**User monitoring:**
+```bash
+ssh -t user@host 'tmux attach -t task-{name}-agents'
+```
+
+**PM sends commands via SSH:**
+```bash
+# Using helper script
+./scripts/send_to_remote_agent.sh --task <name> --window 3 \
+  --remote user@host --message "your message"
+
+# Or directly
+ssh host "tmux send-keys -t 'task-{name}-agents:{window}' 'message' Enter"
+```
+
+**PM pulls results:**
+```bash
+./scripts/sync_from_remote.sh --task <name> --remote user@host:/path
+```
 
 ## Decision Framework
 

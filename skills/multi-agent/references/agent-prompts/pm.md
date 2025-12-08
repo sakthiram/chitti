@@ -171,22 +171,71 @@ Agents should produce structured handoffs:
 ## Scripts
 
 ```bash
-# Spawn agent
-bash scripts/spawn_agent.sh --task {TASK} --agent {type} --window {N} --handoff {file}
+# Spawn local agent (--handoff and --cli are REQUIRED)
+bash scripts/spawn_agent.sh --task {TASK} --agent {type} --window {N} \
+  --handoff {file} --cli claude|kiro
 
-# Spawn remote agent (dev/architect)
-bash scripts/spawn_agent.sh --task {TASK} --agent dev --window 3 --remote user@host:/path
+# Spawn remote agent (all remote agents for a task share ONE tmux session)
+# Session: task-{TASK}-agents on remote host
+bash scripts/spawn_agent.sh --task {TASK} --agent dev --window 3 \
+  --remote user@host:/path --topic impl --handoff {file} --cli claude|kiro
 
-# Send follow-up to existing agent
+# Send follow-up to LOCAL agent
 bash scripts/send_to_agent.sh --task {TASK} --agent {type} --handoff {file}
 
-# Kill agent window (when context stale)
+# Send follow-up to REMOTE agent
+bash scripts/send_to_remote_agent.sh --task {TASK} --window 3 \
+  --remote user@host --message "your message here"
+
+# Pull results from remote agent (REQUIRED after remote agent completes)
+bash scripts/sync_from_remote.sh --task {TASK} --remote user@host:/path
+
+# Kill local agent window (when context stale)
 tmux kill-window -t task-{TASK}-pm:{window}
+```
+
+## Remote File Transfer
+
+**IMPORTANT:** `--handoff` is REQUIRED for spawn_agent.sh.
+
+File transfer workflow for remote agents:
+1. **At spawn time:** handoff file is automatically copied to remote via scp
+2. **After agent completes:** PM must run `sync_from_remote.sh` to pull results
+
+There is NO automatic rsync/sync. PM explicitly controls all file transfers.
+
+## Remote Agent Architecture
+
+All remote agents for a task share **ONE tmux session** on the remote host:
+- **Session name:** `task-{TASK}-agents`
+- **Each agent gets its own window** (by window number)
+- **No local window created** - user monitors via iTerm
+
+**User monitoring:**
+```bash
+ssh -t user@host 'tmux attach -t task-{TASK}-agents'
+```
+
+**PM sends commands via SSH:**
+```bash
+ssh host "tmux send-keys -t 'task-{TASK}-agents:{window}' 'message' Enter"
 ```
 
 ## Window Numbers
 
-0: pm | 1: explore | 2: plan | 3: dev | 4: test | 5: review
+Window numbers are **sequential based on spawn order**, not tied to agent roles.
+
+- **Window 0**: Always PM (local session only)
+- **Windows 1, 2, 3, ...**: Agents in the order they are spawned
+
+Track spawned agents in `pm_state.json` with their window numbers:
+```json
+"spawned_agents": [
+  {"agent": "explore", "topic": "logs", "window": 1, "status": "complete"},
+  {"agent": "plan", "window": 2, "status": "active"},
+  {"agent": "dev", "topic": "v1", "window": 3, "status": "pending"}
+]
+```
 
 ## Workflow
 

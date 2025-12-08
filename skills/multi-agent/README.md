@@ -5,12 +5,13 @@ Orchestrate autonomous agent teams to complete complex tasks with minimal human 
 ## What This Skill Does
 
 - PM agent **dynamically selects** which specialized agents are needed based on task classification
-- Agent catalog provides available agents (explore, plan, architect, dev, test, review, scribe)
+- Agent catalog provides available agents (explore, plan, architect, dev, test, review)
 - Signal-based decisions (no hardcoded timeouts)
 - Persistent agent sessions with follow-up instructions
-- Remote coding support (dev/architect via SSH)
+- Remote coding support (dev/architect via SSH) with single remote tmux session per task
 - Standardized handoff documents for agent communication
-- **Non-negotiable principles** enforced (review always, scribe for non-trivial, plan usually)
+- **Non-negotiable principles** enforced (review always, human plan review, plan usually)
+- PM maintains progress.md (single source of truth for task status)
 - Supports both Claude and Kiro CLI
 
 ## Quick Start
@@ -44,7 +45,7 @@ Orchestrate autonomous agent teams to complete complex tasks with minimal human 
 ├── tasks/{task-name}/
 │   ├── task.md           # Requirements + agent config
 │   ├── pm_state.json     # PM tracking state
-│   ├── progress.md       # Scribe's status summary
+│   ├── progress.md       # PM's status summary
 │   ├── handoffs/         # Agent communication
 │   └── artifacts/        # Generated outputs
 └── .claude/skills/       # Project-specific skills
@@ -73,8 +74,9 @@ PM dynamically selects agents based on:
 1. **Task Classification** - Complexity (low/medium/high), Type (feature/bugfix/refactor/research/hotfix), Scope, Familiarity
 2. **Non-Negotiable Principles**:
    - **Validate & Iterate** - Review agent ALWAYS runs
-   - **Document Decisions** - Scribe ALWAYS for non-trivial tasks
+   - **Document Decisions** - PM updates progress.md
    - **Plan Before Code** - Plan agent unless trivial
+   - **Human Review of Plan** - PM pauses for human approval
    - **Design Before Build** - Architect when needed
 
 PM documents selection rationale in `pm_state.json`, including why agents were selected or skipped.
@@ -101,8 +103,8 @@ test:
 
 ### PM Check-in Flow
 
-1. Scribe updates progress.md
-2. PM reads progress.md and new handoffs
+1. PM reads new handoffs (by mtime)
+2. PM updates progress.md
 3. PM decides next action (spawn agent, send follow-up, escalate)
 
 Set up cron for periodic check-ins:
@@ -123,10 +125,11 @@ Set up cron for periodic check-ins:
 | Script | Purpose |
 |--------|---------|
 | `setup-agents` | Generate agent files for project |
-| `task` | Main CLI (start, status, stop, attach, logs) |
-| `spawn_pm.sh` | Spawn PM agent |
-| `spawn_agent.sh` | Spawn static agent (local or remote) |
-| `send_to_agent.sh` | Send follow-up to existing agent |
+| `task` | Main CLI (create, start, status, stop, attach, logs) |
+| `spawn_agent.sh` | Spawn agent (local or remote). `--handoff` and `--cli` are REQUIRED |
+| `send_to_agent.sh` | Send follow-up to local agent |
+| `send_to_remote_agent.sh` | Send follow-up to remote agent via SSH |
+| `sync_from_remote.sh` | Pull handoffs/artifacts from remote (REQUIRED after remote agent completes) |
 | `pm-check-in.sh` | Trigger PM check-in |
 
 ## Agent Files
