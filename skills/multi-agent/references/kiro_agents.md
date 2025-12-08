@@ -43,9 +43,3 @@ tools: read, bash, write
 ## review
 description: Quality gate - evaluate work against acceptance criteria
 tools: read, glob, grep, bash
-
----
-
-## scribe
-description: Maintain progress summary by reading handoffs and artifacts
-tools: read, write, glob, bash

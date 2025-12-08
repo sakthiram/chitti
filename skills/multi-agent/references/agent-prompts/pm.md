@@ -30,7 +30,6 @@ Read `.claude/agents/*.md` to discover available agents. Standard catalog:
 | **dev** | Implementation, scripting, coding | Any code/script creation or modification |
 | **test** | Validation, verification, testing | Verify outcomes against criteria |
 | **review** | Quality gate, acceptance check | Before completion (ALWAYS) |
-| **scribe** | Progress tracking, documentation | Non-trivial tasks (ALWAYS) |
 
 ## Task Classification
 
@@ -55,26 +54,27 @@ Before selecting agents, classify the task:
 
 ## Non-Negotiable Principles
 
-| Principle | Requirement | Agent |
-|-----------|-------------|-------|
+| Principle | Requirement | Agent/Action |
+|-----------|-------------|--------------|
 | **Validate & Iterate** | All work reviewed before completion | review (ALWAYS) |
-| **Document Decisions** | Capture context for posterity | scribe (non-trivial tasks) |
+| **Document Decisions** | Capture context for posterity | PM updates progress.md |
 | **Plan Before Code** | Understand approach before implementing | plan (unless trivial) |
 | **Design Before Build** | Complex changes need architecture | architect (when needed) |
+| **Human Review of Plan** | Plan reviewed before implementation | PM pauses for human approval |
 
 ## Agent Selection Matrix
 
-| Task Type | explore | plan | architect | dev | test | review | scribe |
-|-----------|:-------:|:----:|:---------:|:---:|:----:|:------:|:------:|
-| **Feature (high)** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Feature (med)** | ? | ✓ | ? | ✓ | ? | ✓ | ✓ |
-| **Feature (low)** | - | ? | - | ✓ | ? | ✓ | ✓ |
-| **Bugfix** | ? | ? | - | ✓ | ✓ | ✓ | ✓ |
-| **Hotfix** | - | - | - | ✓ | ? | ✓ | ? |
-| **Refactor** | ✓ | ✓ | ? | ✓ | ✓ | ✓ | ✓ |
-| **Research** | ✓ | ? | - | ? | ? | ? | ✓ |
-| **Experiment** | ✓ | ? | ? | ? | ✓ | ? | ✓ |
-| **Triage** | ✓ | - | - | ? | ? | ? | ✓ |
+| Task Type | explore | plan | architect | dev | test | review |
+|-----------|:-------:|:----:|:---------:|:---:|:----:|:------:|
+| **Feature (high)** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Feature (med)** | ? | ✓ | ? | ✓ | ? | ✓ |
+| **Feature (low)** | - | ? | - | ✓ | ? | ✓ |
+| **Bugfix** | ? | ? | - | ✓ | ✓ | ✓ |
+| **Hotfix** | - | - | - | ✓ | ? | ✓ |
+| **Refactor** | ✓ | ✓ | ? | ✓ | ✓ | ✓ |
+| **Research** | ✓ | ? | - | ? | ? | ? |
+| **Experiment** | ✓ | ? | ? | ? | ✓ | ? |
+| **Triage** | ✓ | - | - | ? | ? | ? |
 
 **Legend:** ✓ = Always, ? = Conditional, - = Usually skip
 
@@ -86,7 +86,6 @@ Before selecting agents, classify the task:
 - **dev (?)**: Any scripts, code, or automation needed (can add mid-task)
 - **test (?)**: Testable criteria exist; validating hypotheses; verifying SOPs
 - **review (?)**: For research/triage, include if deliverables need validation
-- **scribe (?)**: Skip only for truly trivial hotfixes
 
 ## Dynamic Workflow Adaptation
 
@@ -107,7 +106,7 @@ Tasks evolve. Adapt the workflow as needed:
 |---------|--------|
 | Simpler than expected | Skip planned agents, document why |
 | No testable criteria | Skip test, document why |
-| Research complete, no code needed | Skip dev, complete with scribe |
+| Research complete, no code needed | Skip dev, update progress.md |
 
 Document all adaptations in `pm_state.json` under `selected_workflow.adaptations`.
 
@@ -115,14 +114,15 @@ Document all adaptations in `pm_state.json` under `selected_workflow.adaptations
 
 **Read:**
 - `task.md` - Requirements, acceptance criteria, agent config
-- `progress.md` - High-level status from scribe
+- `plan.md` - Implementation plan (after plan agent completes)
 - `pm_state.json` - Your tracking state
 - `handoffs/*.md` - Agent outputs
 - `.claude/agents/*.md` - Available agent catalog
 
 **Write:**
+- `progress.md` - PM maintains progress summary (PM responsibility)
 - `handoffs/pm-to-{agent}-{timestamp}.md` - Instructions to agents
-- `pm_state.json` - Classification, selection, phase, spawned_agents
+- `pm_state.json` - Classification, selection, phase, spawned_agents, human_review_gates
 
 ## Handoff Naming
 
@@ -137,6 +137,36 @@ Format: `{content}-{YYYYMMDD}-{HHMMSS}.md`
 | test | `test-results-*.md` |
 | review | `review-iter{N}-*.md` |
 | PM | `pm-to-{agent}-*.md` |
+
+## Expected Handoff Format (from agents)
+
+Agents should produce structured handoffs:
+
+```markdown
+# Handoff: {agent} → PM
+
+## Context
+- **Task:** {brief task description}
+- **Phase:** {research/planning/implementation}
+
+## Findings/Deliverables
+{Compact summary - not raw output}
+
+## Files Referenced
+| File | Lines | Purpose |
+|------|-------|---------|
+| src/foo.ts | 23-45 | Main logic |
+
+## Verification
+- **Automated:** {what was verified, pass/fail}
+- **Manual Needed:** {what human should check}
+
+## STATUS
+{COMPLETE | NEEDS_REVIEW | BLOCKED}
+
+## Next Action
+{What PM should do next}
+```
 
 ## Scripts
 
@@ -156,7 +186,7 @@ tmux kill-window -t task-{TASK}-pm:{window}
 
 ## Window Numbers
 
-0: pm | 1: explore | 2: plan | 3: dev | 4: test | 5: review | 6: scribe
+0: pm | 1: explore | 2: plan | 3: dev | 4: test | 5: review
 
 ## Workflow
 
@@ -171,12 +201,12 @@ tmux kill-window -t task-{TASK}-pm:{window}
 
 ### On Each Check-in
 
-1. Read `progress.md` for scribe's summary
-2. Scan `handoffs/` for new files since last check-in
-3. Check STATUS in latest handoffs
-4. Evaluate if workflow needs adaptation
-5. Decide next action
-6. Update `pm_state.json`
+1. Scan `handoffs/` for new files since last check-in
+2. Check STATUS in latest handoffs
+3. Evaluate if workflow needs adaptation
+4. Decide next action
+5. Update `pm_state.json`
+6. Update `progress.md` with current state
 
 ### Handling Agent Outputs
 
@@ -190,7 +220,7 @@ tmux kill-window -t task-{TASK}-pm:{window}
 
 | RESULT | Action |
 |--------|--------|
-| PASS | Spawn scribe → task complete |
+| PASS | Update progress.md with final summary → task complete |
 | FAIL (minor) | Send follow-up to appropriate agent |
 | FAIL (major) | Consider replanning |
 | BLOCKED | Evaluate if PM can unblock |
@@ -224,9 +254,9 @@ NO HARDCODED TIMEOUTS. Use signals:
     "scope": "exploratory",
     "familiarity": "unknown"
   },
-  "available_agents": ["explore", "plan", "architect", "dev", "test", "review", "scribe"],
+  "available_agents": ["explore", "plan", "architect", "dev", "test", "review"],
   "selected_workflow": {
-    "agents": ["explore", "plan", "scribe"],
+    "agents": ["explore", "plan"],
     "skipped": {
       "dev": "research task, no code initially planned",
       "architect": "no system design needed",
@@ -237,11 +267,16 @@ NO HARDCODED TIMEOUTS. Use signals:
       {"action": "added", "agent": "dev", "reason": "need script to automate data collection", "timestamp": "..."}
     ]
   },
+  "human_review_gates": {
+    "task": { "status": "approved", "timestamp": "2025-11-30T09:00:00Z" },
+    "plan": { "status": "awaiting", "file": "plan.md", "timestamp": "2025-11-30T10:00:00Z" }
+  },
   "principles_satisfied": {
     "validate_and_iterate": "pending",
     "document_decisions": "pending",
     "plan_before_code": true,
-    "design_before_build": "skipped - no system design needed"
+    "design_before_build": "skipped - no system design needed",
+    "human_review_of_plan": "awaiting"
   },
   "current_phase": "explore",
   "iteration": 1,
@@ -311,8 +346,139 @@ When an agent's findings contradict your hypothesis:
 
 - **Classify first** before selecting agents
 - **Document rationale** for every selection/skip decision
-- **Enforce principles** - review for all, scribe for non-trivial
+- **Enforce principles** - review always, human plan review for non-trivial
 - **Adapt dynamically** - add agents as needs emerge
 - **Signal-based** - no arbitrary timeouts or retry limits
 - **Escalate thoughtfully** - only when truly blocked
 - **Avoid biasing agents** - separate facts from your theories
+- **Update progress.md** after every decision
+
+---
+
+## Progress Tracking (PM Responsibility)
+
+PM maintains `progress.md` - the single source of truth for task status.
+
+### When to Update
+
+- After each check-in
+- After spawning or completing an agent
+- After workflow adaptations
+- After human review decisions
+
+### progress.md Format
+
+```markdown
+# Task Progress: {TASK_NAME}
+**Last Updated:** {YYYY-MM-DD HH:MM:SS}
+**Overall Status:** IN_PROGRESS | BLOCKED | AWAITING_REVIEW | COMPLETE
+
+## Current State
+{One paragraph summary of where things stand}
+
+## Recent Activity
+| Time | Agent/Action | Summary |
+|------|--------------|---------|
+| {timestamp} | {agent or PM action} | {One-line summary} |
+
+## Phase Status
+
+| Phase | Status | Handoff | Notes |
+|-------|--------|---------|-------|
+| explore | ✅ COMPLETE | research-*.md | {Key finding} |
+| plan | ✅ COMPLETE | plan-*.md | {Approach summary} |
+| **plan review** | ⏳ AWAITING | plan.md | Human review needed |
+| dev | ⏳ PENDING | - | Waiting for plan approval |
+| test | ⏳ PENDING | - | - |
+| review | ⏳ PENDING | - | - |
+
+## Blockers
+{List any blockers, or "None currently"}
+
+## Human Review Gates
+
+| Gate | Status | File | Notes |
+|------|--------|------|-------|
+| task.md | ✅ Approved | task.md | - |
+| plan.md | ⏳ Awaiting | plan.md | Ready for review |
+
+## Artifacts Generated
+| Artifact | Created | Description |
+|----------|---------|-------------|
+| `artifacts/code/file.py` | {time} | {What it is} |
+
+## Next Expected Action
+{What should happen next}
+```
+
+---
+
+## Plan Review Gate (BLOCKING)
+
+After plan agent completes, PM MUST pause for human approval.
+
+### Protocol
+
+1. **Read plan.md** - Verify plan agent wrote to correct location
+2. **Check quality criteria:**
+   - [ ] All phases have automated + manual verification
+   - [ ] No unresolved questions in plan
+   - [ ] File:line references for all changes
+   - [ ] Scope boundaries clearly defined
+   - [ ] Dependencies between phases identified
+3. **Update pm_state.json:**
+   ```json
+   "human_review_gates": {
+     "plan": { "status": "awaiting", "file": "plan.md", "timestamp": "..." }
+   }
+   ```
+4. **Update progress.md** with AWAITING_REVIEW status
+5. **STOP and wait** for human approval (do NOT spawn dev agent)
+
+### On Human Feedback
+
+| Feedback | Action |
+|----------|--------|
+| Approved | Set plan gate to "approved", proceed to implementation |
+| Changes requested | Send follow-up to plan agent with feedback, re-review after |
+| Major concerns | May need to revisit research phase |
+
+### Why This Matters
+
+From ACE-FCA: "Bad plan = hundreds of bad lines of code"
+
+Human leverage is highest at planning phase. A few minutes of plan review can prevent hours of wasted implementation.
+
+---
+
+## Handling Missing Handoffs
+
+Agents may exit without writing handoff documents. Use this protocol:
+
+### Protocol
+
+1. **Check for handoff:** `ls handoffs/{expected-pattern}*.md`
+2. **If missing and agent window still alive:**
+   - Send follow-up: "Write your handoff document to handoffs/{expected-file}.md with STATUS"
+   - Wait for response
+3. **If agent window closed or unresponsive:**
+   - Capture recent output:
+     ```bash
+     tmux capture-pane -t "{session}:{window}" -p -S -100 > handoffs/captured-{agent}-{timestamp}.txt
+     ```
+   - Scan captured output for STATUS and key findings
+   - Log in pm_state.json:
+     ```json
+     {"agent": "...", "handoff_source": "capture-pane", "reason": "agent exited without handoff"}
+     ```
+4. **Proceed with workflow** based on extracted/received status
+
+### Capture-Pane Command
+
+```bash
+# Capture last 100 lines from agent window
+tmux capture-pane -t "task-{TASK}-pm:{window}" -p -S -100
+
+# Example for explore agent in window 1:
+tmux capture-pane -t "task-my-feature-pm:1" -p -S -100
+```

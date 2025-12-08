@@ -7,16 +7,17 @@ description: Orchestrate autonomous agent teams to complete complex tasks. PM dy
 
 ## Overview
 
-This skill enables long-running (4-8 hour) autonomous agent workflows. A PM agent **dynamically selects** specialized agents (explore, plan, architect, dev, test, review, scribe) based on task needs, enforcing software engineering principles.
+This skill enables long-running (4-8 hour) autonomous agent workflows. A PM agent **dynamically selects** specialized agents (explore, plan, architect, dev, test, review) based on task needs, enforcing software engineering principles.
 
 **Key Features:**
 - **Dynamic agent selection** based on task classification
-- **Non-negotiable principles** (review always, scribe for non-trivial, plan usually)
+- **Non-negotiable principles** (review always, human plan review, plan before code)
+- **Human review gates** for task.md and plan.md (high-leverage checkpoints)
 - Signal-based decisions (no hardcoded timeouts)
 - Persistent agent sessions with follow-up instructions
 - Remote coding support (dev/architect via SSH)
 - Standardized handoff documents for agent communication
-- Scribe agent maintains high-level progress view
+- PM maintains progress.md (single source of truth)
 - Project-agnostic framework (tasks/skills in project directory)
 - Supports both Claude and Kiro CLI
 
@@ -167,8 +168,9 @@ The `setup-agents` script generates agents for both CLIs from shared templates.
 ├── tasks/                          # Task instances
 │   └── {task-name}/
 │       ├── task.md                 # Requirements + agent config
+│       ├── plan.md                 # Implementation plan (human-reviewed)
 │       ├── pm_state.json           # PM tracking state
-│       ├── progress.md             # Scribe's status summary
+│       ├── progress.md             # PM's status summary
 │       ├── handoffs/               # Agent communication
 │       ├── artifacts/              # Generated outputs
 │       └── scratchpad/             # Agent working files
@@ -209,11 +211,12 @@ PM dynamically selects agents based on:
 
 ### Non-Negotiable Principles
 
-| Principle | Requirement | Agent |
-|-----------|-------------|-------|
+| Principle | Requirement | Agent/Action |
+|-----------|-------------|--------------|
 | **Validate & Iterate** | All work reviewed before completion | review (ALWAYS) |
-| **Document Decisions** | Capture context for posterity | scribe (ALWAYS for non-trivial) |
+| **Document Decisions** | Capture context for posterity | PM updates progress.md |
 | **Plan Before Code** | Understand approach before implementing | plan (unless trivial) |
+| **Human Review of Plan** | Plan reviewed before implementation | PM pauses for human approval |
 | **Design Before Build** | Complex changes need architecture | architect (when needed) |
 
 ### PM Agent Delegation Rules (CRITICAL)
@@ -282,15 +285,15 @@ This gives the new agent context without full history.
 
 ### Agent Selection Matrix
 
-| Task Type | explore | plan | architect | dev | test | review | scribe |
-|-----------|:-------:|:----:|:---------:|:---:|:----:|:------:|:------:|
-| **Feature (high)** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Feature (med)** | ? | ✓ | ? | ✓ | ? | ✓ | ✓ |
-| **Feature (low)** | - | ? | - | ✓ | ? | ✓ | ✓ |
-| **Bugfix** | ? | ? | - | ✓ | ✓ | ✓ | ✓ |
-| **Hotfix** | - | - | - | ✓ | ? | ✓ | ? |
-| **Refactor** | ✓ | ✓ | ? | ✓ | ✓ | ✓ | ✓ |
-| **Research** | ✓ | - | - | - | - | ? | ✓ |
+| Task Type | explore | plan | architect | dev | test | review |
+|-----------|:-------:|:----:|:---------:|:---:|:----:|:------:|
+| **Feature (high)** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Feature (med)** | ? | ✓ | ? | ✓ | ? | ✓ |
+| **Feature (low)** | - | ? | - | ✓ | ? | ✓ |
+| **Bugfix** | ? | ? | - | ✓ | ✓ | ✓ |
+| **Hotfix** | - | - | - | ✓ | ? | ✓ |
+| **Refactor** | ✓ | ✓ | ? | ✓ | ✓ | ✓ |
+| **Research** | ✓ | ? | - | ? | ? | ? |
 
 **Legend:** ✓ = Always, ? = Conditional, - = Usually skip
 
@@ -401,19 +404,44 @@ pm-check-in.sh triggered (cron or manual)
          │
          ▼
 ┌─────────────────────────┐
-│  1. Nudge Scribe        │  (updates progress.md)
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│  2. Nudge PM            │  (reads progress.md, decides next action)
+│  Nudge PM               │  (scans handoffs, updates progress.md, decides next action)
 └─────────────────────────┘
 ```
+
+PM handles progress tracking directly (no separate scribe agent).
 
 Set up cron for periodic check-ins:
 ```bash
 */10 * * * * /path/to/scripts/pm-check-in.sh my-task --project /path/to/project
 ```
+
+## Human Review Gates
+
+The framework includes blocking human review checkpoints at high-leverage points:
+
+### Plan Review Gate
+
+After plan agent completes, PM **blocks** until human approves the plan:
+
+1. Plan agent writes `plan.md` with implementation phases
+2. PM verifies plan quality (auto/manual verification, file:line refs, scope)
+3. PM sets `human_review_gates.plan = "awaiting"` in pm_state.json
+4. PM updates progress.md with AWAITING_REVIEW status
+5. **PM STOPS** - does not spawn dev agent until human approves
+6. Human reviews plan.md and provides approval or feedback
+7. On approval: PM proceeds to implementation
+8. On feedback: PM sends follow-up to plan agent, re-reviews
+
+### Why Human Review at Planning?
+
+From ACE-FCA: "Bad plan = hundreds of bad lines of code"
+
+Human leverage hierarchy:
+- Bad research → thousands of bad lines of code
+- Bad plan → hundreds of bad lines of code
+- Bad code → bad code
+
+A few minutes reviewing the plan prevents hours of wasted implementation.
 
 ## Tmux Session Structure
 
@@ -421,15 +449,14 @@ Session: `task-{task-name}-pm`
 
 | Window | Name | Purpose |
 |--------|------|---------|
-| 0 | pm | Orchestrator |
+| 0 | pm | Orchestrator + progress tracking |
 | 1 | explore-hotplug | Research (first topic) |
 | 2 | plan | Design |
 | 3 | dev-v1 | Implementation (first iteration) |
 | 4 | test | Validation |
 | 5 | review | Quality gate |
-| 6 | scribe | Progress tracking |
-| 7 | explore-setfeat | Research (second topic) |
-| 8 | dev-v2 | Implementation (after review) |
+| 6 | explore-setfeat | Research (second topic) |
+| 7 | dev-v2 | Implementation (after review) |
 
 Window names use format `{agent}-{topic}` when topic is provided.
 
@@ -439,11 +466,14 @@ PM makes signal-based decisions (NO hardcoded timeouts):
 
 | Signal | Action |
 |--------|--------|
-| Agent STATUS: COMPLETE | Spawn next agent in selected workflow |
+| Agent STATUS: COMPLETE | Spawn next agent in workflow (check human gates first) |
 | Agent STATUS: NEEDS_REVIEW | Spawn review |
 | Agent STATUS: BLOCKED | Evaluate: unblock or escalate |
-| Review RESULT: PASS | Spawn scribe, complete task |
+| Plan agent COMPLETE | Set plan gate to "awaiting", STOP for human review |
+| Human approves plan | Proceed to implementation |
+| Review RESULT: PASS | Update progress.md with final summary, complete task |
 | Review RESULT: FAIL | Send follow-up to dev with feedback |
+| Missing handoff | Send follow-up or use capture-pane fallback |
 
 **Review owns retry logic.** No "max 3 attempts" - review decides if more iterations worthwhile.
 
@@ -461,9 +491,9 @@ PM tracks dynamic selection and rationale:
     "scope_paths": ["src/api/", "src/models/"],
     "familiarity": "known"
   },
-  "available_agents": ["explore", "plan", "architect", "dev", "test", "review", "scribe"],
+  "available_agents": ["explore", "plan", "architect", "dev", "test", "review"],
   "selected_workflow": {
-    "agents": ["explore", "plan", "dev", "review", "scribe"],
+    "agents": ["explore", "plan", "dev", "review"],
     "skipped": {
       "architect": "no new interfaces, extending existing pattern",
       "test": "no testable acceptance criteria specified"
@@ -471,19 +501,23 @@ PM tracks dynamic selection and rationale:
     "rationale": "Medium complexity feature, familiar codebase area",
     "adaptations": []
   },
+  "human_review_gates": {
+    "task": { "status": "approved", "timestamp": "2025-11-30T09:00:00Z" },
+    "plan": { "status": "awaiting", "file": "plan.md", "timestamp": "2025-11-30T10:00:00Z" }
+  },
   "principles_satisfied": {
     "validate_and_iterate": "pending",
     "document_decisions": "pending",
     "plan_before_code": true,
+    "human_review_of_plan": "awaiting",
     "design_before_build": "skipped - no new interfaces"
   },
-  "current_phase": "dev",
+  "current_phase": "plan",
   "iteration": 1,
   "spawned_agents": [
     {"agent": "explore", "topic": "hotplug", "window": 1, "status": "complete", "handoff": "explore-20251201-085449.md"},
-    {"agent": "explore", "topic": "setfeat", "window": 7, "status": "complete", "handoff": "explore-20251201-090753.md"},
-    {"agent": "plan", "window": 2, "status": "complete", "handoff": "plan-20251201-100000.md"},
-    {"agent": "dev", "topic": "v1", "window": 3, "status": "active"}
+    {"agent": "explore", "topic": "setfeat", "window": 6, "status": "complete", "handoff": "explore-20251201-090753.md"},
+    {"agent": "plan", "window": 2, "status": "complete", "handoff": "plan-20251201-100000.md"}
   ],
   "last_checkin": "2025-11-30T10:30:00Z"
 }

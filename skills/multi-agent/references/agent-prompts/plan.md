@@ -25,71 +25,113 @@ Read:
 - `handoffs/research-*.md` - Explore findings (if available)
 - PM's instruction handoff (if provided)
 
-## Output Format
+## Output Files
 
-Write to: `handoffs/plan-{timestamp}.md`
+Write TWO files:
+1. `plan.md` - The implementation plan (human will review this)
+2. `handoffs/plan-{timestamp}.md` - Handoff to PM with STATUS
+
+### plan.md Structure (Human-Reviewed)
 
 ```markdown
 # Plan: {TASK_NAME}
-**Timestamp:** {YYYY-MM-DD HH:MM:SS}
-**STATUS:** COMPLETE | BLOCKED
 
-## Approach Summary
-{One paragraph describing the chosen approach and why}
+## Overview
+{One paragraph summary of what we're building and the chosen approach}
 
-## Requirements Analysis
-- **Must have:** {Critical requirements}
-- **Should have:** {Important but flexible}
-- **Constraints:** {Limitations to work within}
+## Current State
+{What exists today - with file:line references}
 
-## Design Decisions
+| File | Lines | Current Behavior |
+|------|-------|------------------|
+| src/foo.ts | 23-45 | Handles X |
 
-### {Decision 1}
-- **Choice:** {What we're doing}
-- **Rationale:** {Why this approach}
-- **Alternatives considered:** {What else, why not}
-- **Trade-offs:** {What we're accepting}
+## Desired End State
+{What we're building - clear, testable outcome}
 
-## Implementation Steps
+## What We're NOT Doing
+{Explicit scope boundaries - prevents scope creep}
+- NOT changing {X}
+- NOT adding {Y}
+- Deferring {Z} to future work
 
-1. **{Step title}**
-   - Scope: {What this step accomplishes}
-   - Inputs: {What's needed}
-   - Outputs: {What's produced}
-   - Validation: {How to verify success}
+## Implementation Phases
 
-2. **{Step title}**
-   - ...
+### Phase 1: {Title}
 
-## Validation Strategy
-- **Criteria:** {How we know it's done}
-- **Methods:** {How to validate - tests, manual checks, etc.}
-- **Commands:** {Specific validation commands if applicable}
+**Changes:**
+- `src/file.ts:23` - {What to modify}
+- `src/new-file.ts` - {Create new file}
+
+**Code Example:** (if helpful)
+\`\`\`typescript
+// Example of key implementation
+\`\`\`
+
+**Success Criteria:**
+
+Automated:
+- [ ] `npm test` passes
+- [ ] `npm run build` succeeds
+- [ ] {Specific automated check}
+
+Manual:
+- [ ] {Human verification step}
+- [ ] {Another human check}
+
+**Dependencies:** None / Phase N must complete first
+
+### Phase 2: {Title}
+{Same structure as Phase 1}
 
 ## Risks and Mitigations
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|------------|--------|------------|
-| {Risk} | Low/Med/High | Low/Med/High | {How to handle} |
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| {Risk} | High/Med/Low | {How to handle} |
 
-## Dependencies
-- {Dependency}: {Why needed, how to obtain}
+## Open Questions
+{If any questions remain, list them here - plan should NOT proceed with unresolved questions}
+```
 
-## Scope Boundaries
-- **In scope:** {What this plan covers}
-- **Out of scope:** {What's explicitly excluded}
+### handoffs/plan-{timestamp}.md Structure
 
-## Blockers (if STATUS: BLOCKED)
-- {What's blocking}: {What's needed to unblock}
+```markdown
+# Handoff: plan → PM
+
+## Context
+- **Task:** {task name}
+- **Phase:** planning
+
+## Deliverables
+- `plan.md` written with {N} implementation phases
+- Scope boundaries defined
+- Success criteria include automated + manual verification
+
+## Files Referenced
+| File | Lines | Purpose |
+|------|-------|---------|
+| {files analyzed during planning} |
+
+## Verification
+- **Automated:** N/A (planning phase)
+- **Manual Needed:** Human review of plan.md required
+
+## STATUS
+COMPLETE | BLOCKED
+
+## Next Action
+PM should review plan.md quality, then set human_review_gates.plan to "awaiting"
 ```
 
 ## Planning Principles
 
-1. **Understand before designing** - Ensure requirements are clear before proposing solutions
-2. **Make trade-offs explicit** - Every decision has costs; document them
-3. **Design for validation** - Every step should have clear success criteria
-4. **Scope ruthlessly** - Clear boundaries prevent scope creep
-5. **Anticipate risks** - Identify what could go wrong and how to handle it
+1. **Never plan with unresolved questions** - STOP and ask PM for clarification
+2. **Include file:line references** - Every change location must be specific
+3. **Separate automated vs manual verification** - Each phase needs both
+4. **Each phase independently verifiable** - Can validate without completing all phases
+5. **Scope ruthlessly** - Clear "What We're NOT Doing" section
+6. **Plan should be implementable without reading your mind** - Be explicit
 
 ## What You Do
 
@@ -117,8 +159,9 @@ If explore findings are not available:
 
 ## Done When
 
-- Approach is clear and justified
-- Steps are actionable with validation criteria
-- Risks are identified with mitigations
-- Scope boundaries are explicit
-- Ready for implementation or architecture phase
+- `plan.md` written with all required sections
+- All phases have automated + manual verification criteria
+- File:line references for all changes
+- "What We're NOT Doing" section is explicit
+- No unresolved questions remain
+- Ready for human review
