@@ -172,7 +172,12 @@ The `setup-agents` script generates agents for both CLIs from shared templates.
 │       ├── pm_state.json           # PM tracking state
 │       ├── progress.md             # PM's status summary
 │       ├── handoffs/               # Agent communication
-│       ├── artifacts/              # Generated outputs
+│       ├── artifacts/              # Generated outputs (namespaced)
+│       │   ├── explore-hotplug/    # Research findings by topic
+│       │   ├── plan/               # Design documents
+│       │   ├── dev-v1/             # Implementation iteration 1
+│       │   ├── test/               # Test results, logs
+│       │   └── review-iter1/       # Review findings
 │       └── scratchpad/             # Agent working files
 └── src/                            # Project source code
 ```
@@ -312,6 +317,34 @@ All handoffs use: `{content}-{YYYYMMDD}-{HHMMSS}.md`
 | test | `test-results-{ts}.md` | `test-results-20251127-150000.md` |
 | review | `review-iter{N}-{ts}.md` | `review-iter1-20251127-160000.md` |
 | PM | `pm-to-{agent}-{ts}.md` | `pm-to-dev-20251127-170000.md` |
+
+## Artifact Storage Convention
+
+Artifacts are namespaced by agent and topic: `artifacts/<agent>-<topic>/`
+
+PM advertises the artifact path when spawning agents. Agents should:
+1. Store generated outputs in their artifact directory
+2. Reference artifact paths in handoff documents
+3. Read artifacts from previous agents as specified in PM handoff
+
+| Agent | Artifact Path | Example Contents |
+|-------|---------------|------------------|
+| explore | `artifacts/explore-{topic}/` | Analysis reports, diagrams, timelines |
+| plan | `artifacts/plan/` | Design docs, architecture diagrams |
+| architect | `artifacts/architect/` | Interface definitions, system diagrams |
+| dev | `artifacts/dev-{topic}/` | Generated code, patches, configs |
+| test | `artifacts/test/` | Logs, screenshots, test results |
+| review | `artifacts/review-iter{N}/` | Review reports, findings |
+
+**Example handoff referencing artifacts:**
+```markdown
+## Context
+See research at: artifacts/explore-hotplug/analysis.md
+
+## Artifacts Generated
+- artifacts/dev-v1/fix.patch
+- artifacts/dev-v1/config.yaml
+```
 
 ## Scripts
 

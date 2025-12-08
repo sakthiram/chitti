@@ -91,6 +91,13 @@ WORK_DIR="${CWD:-$PROJECT_DIR}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 OUTPUT_HANDOFF="handoffs/${AGENT}-${TIMESTAMP}.md"
 
+# Generate artifact directory path (namespaced by agent-topic)
+if [[ -n "$TOPIC" ]]; then
+  ARTIFACT_DIR="artifacts/${AGENT}-${TOPIC}"
+else
+  ARTIFACT_DIR="artifacts/${AGENT}"
+fi
+
 # Build prompt - for Claude CLI, instruct to use subagent
 # (Kiro CLI uses --agent flag instead)
 if [[ "$CLI" == "claude" ]]; then
@@ -106,11 +113,13 @@ if [[ -n "$HANDOFF" ]]; then
 Task directory: ${TASK_DIR}/
 Read your instructions from: handoffs/${HANDOFF}
 Write your handoff to: ${OUTPUT_HANDOFF}
+Store artifacts in: ${ARTIFACT_DIR}/
 Begin now."
 else
   PROMPT="${AGENT_INSTRUCTION}You are the ${AGENT} agent for task: ${TASK_NAME}
 Task directory: ${TASK_DIR}/
 Write your handoff to: ${OUTPUT_HANDOFF}
+Store artifacts in: ${ARTIFACT_DIR}/
 Begin now."
 fi
 
@@ -124,6 +133,9 @@ if [[ -n "$REMOTE" ]]; then
 
   # Create remote directories
   ssh "$SSH_TARGET" "mkdir -p ${REMOTE_TASK_DIR}/{handoffs,artifacts,scratchpad}"
+
+  # Create agent-specific artifact directory
+  ssh "$SSH_TARGET" "mkdir -p ${REMOTE_TASK_DIR}/${ARTIFACT_DIR}"
 
   # Copy agent file to remote
   if [[ "$CLI" == "kiro" ]]; then
