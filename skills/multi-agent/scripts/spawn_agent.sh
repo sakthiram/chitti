@@ -148,28 +148,40 @@ if [[ -n "$REMOTE" ]]; then
     echo "Started rsync cron: ${SSH_TARGET} -> local (every 2 min)"
   fi
 
-  # Create window and spawn remote agent
-  tmux new-window -t "${SESSION}:${WINDOW}" -n "${WINDOW_NAME}"
-
-  # TODO: Remove --trust-all-tools / --dangerously-skip-permissions once proper tool configs are set up
-  # C-m must be separate send-keys call
-  if [[ "$CLI" == "kiro" ]]; then
-    tmux send-keys -t "${SESSION}:${WINDOW}" \
-      "ssh -t ${SSH_TARGET} 'cd ${REMOTE_PATH} && kiro-cli chat --trust-all-tools --agent ${AGENT}'"
-    tmux send-keys -t "${SESSION}:${WINDOW}" C-m
+  # Remote tmux session name (unique per task+agent+topic)
+  if [[ -n "$TOPIC" ]]; then
+    REMOTE_SESSION="agent-${TASK_NAME}-${AGENT}-${TOPIC}"
   else
-    tmux send-keys -t "${SESSION}:${WINDOW}" \
-      "ssh -t ${SSH_TARGET} 'cd ${REMOTE_PATH} && claude --dangerously-skip-permissions'"
-    tmux send-keys -t "${SESSION}:${WINDOW}" C-m
+    REMOTE_SESSION="agent-${TASK_NAME}-${AGENT}"
   fi
 
-  # Wait for CLI to load, then send the context prompt
+  # Step 1: Create detached tmux session on remote (or reuse existing)
+  # This allows the agent to survive SSH disconnection
+  if ssh "$SSH_TARGET" "tmux has-session -t '${REMOTE_SESSION}' 2>/dev/null"; then
+    echo "Remote tmux session '${REMOTE_SESSION}' already exists, will attach..."
+  else
+    echo "Creating remote tmux session '${REMOTE_SESSION}'..."
+    # TODO: Remove --trust-all-tools / --dangerously-skip-permissions once proper tool configs are set up
+    if [[ "$CLI" == "kiro" ]]; then
+      ssh "$SSH_TARGET" "cd ${REMOTE_PATH} && tmux new-session -d -s '${REMOTE_SESSION}' 'kiro-cli chat --trust-all-tools --agent ${AGENT}'"
+    else
+      ssh "$SSH_TARGET" "cd ${REMOTE_PATH} && tmux new-session -d -s '${REMOTE_SESSION}' 'claude --dangerously-skip-permissions'"
+    fi
+  fi
+
+  # Step 2: Create local window that attaches to remote tmux session
+  tmux new-window -t "${SESSION}:${WINDOW}" -n "${WINDOW_NAME}"
+  tmux send-keys -t "${SESSION}:${WINDOW}" "ssh -t ${SSH_TARGET} 'tmux attach -t ${REMOTE_SESSION}'"
+  tmux send-keys -t "${SESSION}:${WINDOW}" C-m
+
+  # Step 3: Wait for CLI to load, then send the context prompt
   sleep 8
   tmux send-keys -t "${SESSION}:${WINDOW}" -l "${PROMPT}"
   sleep 1
   tmux send-keys -t "${SESSION}:${WINDOW}" C-m
 
-  echo "Spawned remote ${AGENT} agent in window ${WINDOW} on ${SSH_TARGET}"
+  echo "Spawned remote ${AGENT} agent in window ${WINDOW} (remote tmux: ${REMOTE_SESSION})"
+  echo "Remote agent survives SSH disconnection. Reconnect with: ssh -t ${SSH_TARGET} 'tmux attach -t ${REMOTE_SESSION}'"
 
 else
   # Local spawn - working directory is project root by default
