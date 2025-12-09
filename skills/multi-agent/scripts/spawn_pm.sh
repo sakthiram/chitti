@@ -56,7 +56,10 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
 fi
 
 # Create tmux session with project as cwd
-tmux new-session -s "$SESSION" -n "pm" -d -c "$PROJECT_DIR"
+# Get terminal dimensions, fallback to reasonable defaults if not available
+TERM_COLS="${COLUMNS:-$(tput cols 2>/dev/null || echo 200)}"
+TERM_ROWS="${LINES:-$(tput lines 2>/dev/null || echo 50)}"
+tmux new-session -s "$SESSION" -n "pm" -d -c "$PROJECT_DIR" -x "$TERM_COLS" -y "$TERM_ROWS"
 
 # Wait for shell to fully initialize
 sleep 3

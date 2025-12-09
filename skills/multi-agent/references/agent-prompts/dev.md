@@ -105,6 +105,8 @@ Write to: `handoffs/PR-iter{N}-{timestamp}.md`
 
 - Write code (features, scripts, fixes)
 - Create/modify files
+- **Run builds and fix any build errors**
+- **Document deployment artifacts** (paths test agent needs)
 - Run validation commands
 - Document changes clearly
 - Follow plan and architecture decisions
@@ -132,6 +134,13 @@ If plan/architecture handoffs are not available:
 ## Done When
 
 - Implementation complete per requirements
+- **Build passes** - Run the build command, confirm no errors
+- **Deployment artifacts documented** - If sideload/deploy needed, specify exact paths for test agent
 - Validation commands pass
 - Changes documented clearly
 - Ready for review
+
+**You are NOT done if:**
+- Build hasn't been run
+- Build fails with errors
+- Test agent doesn't know what files to deploy

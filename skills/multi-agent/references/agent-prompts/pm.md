@@ -170,6 +170,8 @@ Agents should produce structured handoffs:
 
 ## Scripts
 
+Prefer these helper scripts over raw SSH/tmux commands.
+
 ```bash
 # Spawn local agent (--handoff and --cli are REQUIRED)
 bash scripts/spawn_agent.sh --task {TASK} --agent {type} --window {N} \
@@ -264,6 +266,75 @@ Track spawned agents in `pm_state.json` with their window numbers:
 | COMPLETE | Spawn next agent in workflow |
 | NEEDS_REVIEW | Spawn review agent |
 | BLOCKED | Evaluate: unblock or escalate |
+
+### Before Spawning Next Agent (Artifact Sync)
+
+If previous agent was REMOTE and next agent is LOCAL:
+
+1. **Identify needed artifacts** - What files does the next agent need from remote?
+2. **Sync artifacts** - Pull files from remote to local:
+   ```bash
+   # Sync specific files
+   scp user@host:/remote/path/to/artifact.so /local/path/
+
+   # Or use helper script for all handoffs/artifacts
+   bash scripts/sync_from_remote.sh --task {TASK} --remote user@host:/path
+   ```
+3. **Update handoff** - Include LOCAL artifact paths in handoff to next agent
+
+**Example:** Dev agent (remote) builds `libfastrtps.so`. Before spawning test agent (local), PM must:
+- Sync `libfastrtps.so` from remote to local
+- Tell test agent the local path, not the remote path
+
+### Helper Agents for Context Efficiency
+
+To avoid context bloat, run headless one-shot commands for routine operations:
+
+| Helper | Purpose | Returns |
+|--------|---------|---------|
+| status-check | Capture-pane + parse agent status | 1-2 line status summary |
+| sync-artifacts | Pull specific artifacts from remote | List of synced files |
+| summarize-handoffs | Read recent handoffs, extract key info | Bullet point summary |
+| artifact-inventory | List artifacts needed by next agent | Paths + locations |
+
+**Headless One-Shot Commands:**
+
+```bash
+# Status Check Helper
+claude -p "Run: tmux capture-pane -t 'task-{TASK}-pm:{WINDOW}' -p | tail -50
+Parse output and return ONLY:
+- STATUS: active/complete/blocked
+- Current activity: (1 line)
+- Errors if any: (1 line)" --allowedTools "Bash"
+
+# Or with Kiro:
+kiro-cli chat --no-interactive "Run: tmux capture-pane -t 'task-{TASK}-pm:{WINDOW}' -p | tail -50
+Parse and return: STATUS (active/complete/blocked), activity (1 line), errors (1 line)" --trust-tools shell
+
+# Artifact Inventory Helper
+claude -p "Working dir: {TASK_DIR}
+Read handoffs/dev-*.md files. Return ONLY:
+- Files needed by next agent (test)
+- Current location (remote path or local path)
+- Action needed (sync from remote / already local)" --allowedTools "Read,Glob"
+
+# Sync Artifacts Helper
+claude -p "Sync file from remote to local:
+Remote: {USER}@{HOST}:{REMOTE_PATH}
+Local: {LOCAL_PATH}
+Run scp command. Return: success/fail, file size" --allowedTools "Bash"
+
+# Summarize Handoffs Helper
+claude -p "Working dir: {TASK_DIR}
+Read all handoffs/*-{YYYYMMDD}-*.md files from today.
+Return ONLY (max 5 lines total):
+- Agent, status, key finding (1 bullet each)" --allowedTools "Read,Glob"
+```
+
+**When to use helpers:**
+- Instead of raw `tmux capture-pane` output flooding PM context
+- Before spawning local agent that needs remote artifacts
+- When reviewing multiple handoffs at once
 
 ### Review Feedback Loop
 
@@ -360,6 +431,10 @@ When writing `pm-to-{agent}-*.md` handoffs, you MUST separate facts from hypothe
 ## Mission
 {What to investigate - neutral framing}
 
+## Skills
+Use these skills: [skill-name-1, skill-name-2]
+(from task.md Agent Config)
+
 ## Background (Facts Only)
 - Symptom: {observable behavior}
 - Logs show: {raw log data}
@@ -382,6 +457,10 @@ When writing `pm-to-{agent}-*.md` handoffs, you MUST separate facts from hypothe
 
 ### CORRECT Example:
 > "Hypothesis: Race condition in state_manager. Investigate these commits independently and report what YOU find, even if it contradicts this hypothesis."
+
+### Remote Agent Handoffs
+
+Remote agents run LOCALLY on the target machine. Do NOT include SSH connection details - use local paths only.
 
 ## Handling Contradicting Agent Findings
 

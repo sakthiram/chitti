@@ -238,6 +238,39 @@ PM dynamically selects agents based on:
 
 **If PM finds itself investigating directly (reading logs, running searches), it should STOP and spawn an explore agent instead.**
 
+### PM Helper Agents
+
+PM should run headless one-shot commands for routine operations:
+
+| Helper | Purpose | Returns |
+|--------|---------|---------|
+| status-check | Capture-pane + parse status | 1-2 line summary |
+| sync-artifacts | Pull files from remote | List of synced files |
+| artifact-inventory | What does next agent need? | Paths + locations |
+| summarize-handoffs | Digest recent handoffs | Bullet point summary |
+
+**Why helpers?**
+- Raw `tmux capture-pane` floods PM context with 100+ lines
+- Artifact sync requires commands that produce verbose output
+- Reading 5 handoffs consumes context better used for orchestration
+
+**Headless execution:**
+```bash
+# Claude
+claude -p "Context... Goal... Return ONLY: ..." --allowedTools "Bash,Read"
+
+# Kiro
+kiro-cli chat --no-interactive "Context... Goal..." --trust-tools shell,read
+```
+
+See `references/agent-prompts/pm.md` for full helper command templates.
+
+**Artifact sync workflow (CRITICAL):**
+Before spawning LOCAL agent that needs REMOTE artifacts:
+1. Run artifact-inventory helper to identify needed files
+2. Sync artifacts from remote to local
+3. Include LOCAL paths in handoff (not remote paths)
+
 ### Handoff Best Practices
 
 Every handoff to an agent should include:
@@ -256,6 +289,10 @@ Every handoff to an agent should include:
 - Update handoff with correction
 - Spawn NEW agent with corrected instructions
 - Don't try to fix it in current PM context
+
+### Remote Agent Handoffs
+
+Remote agents run LOCALLY on the target machine. Do NOT include SSH connection details - use local paths only.
 
 ### Continuation vs Fresh Agent
 

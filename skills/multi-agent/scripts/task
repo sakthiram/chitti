@@ -19,7 +19,8 @@ REGISTRY="${PROJECT_DIR}/.task-registry.json"
 TASK_FILE=""
 TASK_GOAL=""
 
-# Parse global flags
+# Parse all arguments - flags can appear anywhere
+POSITIONAL_ARGS=()
 while [[ $# -gt 0 ]]; do
   case $1 in
     --project)
@@ -42,26 +43,30 @@ while [[ $# -gt 0 ]]; do
       TASK_FILE="$2"
       shift 2
       ;;
+    -*)
+      echo "Error: Unknown flag '$1'"
+      exit 1
+      ;;
     *)
-      break
+      POSITIONAL_ARGS+=("$1")
+      shift
       ;;
   esac
 done
 
-CLI="${CLI:-kiro}"  # Default to kiro
+# Restore positional args
+set -- "${POSITIONAL_ARGS[@]}"
+
+# CLI is mandatory
+if [[ -z "$CLI" ]]; then
+  echo "Error: --cli is required. Specify --cli claude or --cli kiro"
+  exit 1
+fi
 
 # Show warning if using defaults
 show_defaults_warning() {
-  local warnings=""
-  if [[ "$CLI_SPECIFIED" == "false" ]]; then
-    warnings="cli=kiro"
-  fi
   if [[ "$PROJECT_SPECIFIED" == "false" ]]; then
-    [[ -n "$warnings" ]] && warnings="$warnings, "
-    warnings="${warnings}project=$(pwd)"
-  fi
-  if [[ -n "$warnings" ]]; then
-    echo "⚠️  Using defaults: ${warnings}"
+    echo "⚠️  Using default project: $(pwd)"
     echo ""
   fi
 }
