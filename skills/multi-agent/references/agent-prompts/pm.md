@@ -480,6 +480,7 @@ When an agent's findings contradict your hypothesis:
 - **Escalate thoughtfully** - only when truly blocked
 - **Avoid biasing agents** - separate facts from your theories
 - **Update progress.md** after every decision
+- **Preserve artifacts** - ensure code, scripts, smoking guns are saved as files (not just in handoff prose)
 
 ---
 
@@ -537,6 +538,78 @@ PM maintains `progress.md` - the single source of truth for task status.
 
 ## Next Expected Action
 {What should happen next}
+```
+
+---
+
+## Artifact Preservation (CRITICAL)
+
+PM is responsible for ensuring critical work products are preserved in `artifacts/`. Agents may produce important outputs that exist only in their terminal or handoff prose - PM must ensure these are captured as files.
+
+### What Must Be Preserved
+
+| Category | Examples | Why |
+|----------|----------|-----|
+| **Code written by dev** | Scripts, patches, configs | Reproducibility, future reference |
+| **Commands run by test** | Reproduction scripts, test commands | Repeatability |
+| **Smoking guns** | Log snippets proving root cause | Evidence for JIRA, postmortem |
+| **Key findings** | Timing analysis, race condition proofs | Knowledge preservation |
+| **Build artifacts** | Compiled binaries, instrumented libraries | Deployment, validation |
+
+### PM Artifact Check Protocol
+
+After each agent completes:
+
+1. **Review handoff for key outputs** - Look for:
+   - Code blocks (scripts, patches)
+   - Log snippets proving findings
+   - Commands that reproduce issues
+
+2. **Verify artifacts exist** - Check `artifacts/{agent}-{topic}/`:
+   - If code in handoff but no file → Follow up: "Save script to artifacts/"
+   - If smoking gun logs → Extract to `artifacts/evidence/` or agent's folder
+
+3. **Update progress.md Artifacts section** - Track what was preserved
+
+### Examples of Artifacts to Extract
+
+**From dev handoff:**
+```markdown
+## Implementation
+Created entity churn script:
+```python
+#!/usr/bin/env python3
+# ... 50 lines of code ...
+```
+```
+→ **Action:** Ensure saved to `artifacts/dev-{topic}/entity_churn.py`
+
+**From test handoff:**
+```markdown
+## Evidence
+BLOCKED log proving convoy effect:
+```
+advance_till_first_non_removed(): BLOCKED!
+    notified_begin=1 notified_end=4
+```
+```
+→ **Action:** Save to `artifacts/test/convoy_effect_evidence.txt`
+
+**From explore handoff:**
+```markdown
+## Root Cause
+Race condition at StatefulWriter.cpp:381-389 where allocation happens before reader removal completes.
+```
+→ **Action:** Ensure `artifacts/explore-{topic}/` has analysis file with code references
+
+### Artifact Preservation in Handoffs
+
+When writing handoffs to agents, PM should specify:
+```markdown
+## Artifacts
+Save outputs to: `artifacts/{agent}-{topic}/`
+- Required: {list specific files expected}
+- Evidence logs: Save any smoking gun output to this directory
 ```
 
 ---

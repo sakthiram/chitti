@@ -383,6 +383,19 @@ See research at: artifacts/explore-hotplug/analysis.md
 - artifacts/dev-v1/config.yaml
 ```
 
+### Artifact Preservation (PM Responsibility)
+
+**PM must ensure critical outputs are preserved as files, not just prose in handoffs.**
+
+| Must Preserve | Examples | Action |
+|---------------|----------|--------|
+| Code from dev | Scripts, patches | Verify file exists in `artifacts/dev-*/` |
+| Commands from test | Repro scripts, test commands | Save to `artifacts/test/` |
+| Smoking guns | Log snippets proving root cause | Extract to `artifacts/evidence/` |
+| Key findings | Timing analysis, race proofs | Ensure analysis file exists |
+
+**PM Artifact Check:** After each agent completes, PM reviews handoff for code blocks, log snippets, and key findings. If important content exists only in prose, PM follows up to ensure it's saved as a file.
+
 ## Scripts
 
 ### Setup
