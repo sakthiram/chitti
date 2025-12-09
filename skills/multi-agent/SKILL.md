@@ -597,6 +597,193 @@ ssh host "tmux send-keys -t 'task-{name}-agents:{window}' 'message' Enter"
 ./scripts/sync_from_remote.sh --task <name> --remote user@host:/path
 ```
 
+## Iterative Feedback Loop (Exploratory Tasks)
+
+For complex debugging, research, or exploratory tasks, PM should use an **iterative feedback loop** with domain expert agents rather than one-shot delegation.
+
+### Pattern: PM <-> Plan <-> Expert Agent Loop
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                         ITERATIVE LOOP                               │
+│                                                                      │
+│   PM ──handoff──> Expert Agent (explore/dev/test)                    │
+│    │                    │                                            │
+│    │              runs experiment                                    │
+│    │                    │                                            │
+│    │ <───────────── handoff with results                             │
+│    │                                                                 │
+│    ├── analyze results                                               │
+│    ├── if goal NOT achieved:                                         │
+│    │      ├── spawn plan agent with learnings + failed approaches    │
+│    │      │         │                                                │
+│    │      │   plan-iteration-N.md (next approach)                    │
+│    │      │         │                                                │
+│    │      ├── HUMAN REVIEW GATE (unless iteration_plan_review: auto) │
+│    │      │         │                                                │
+│    │      └── spawn expert agent with approved plan (loop)           │
+│    └── if goal achieved OR blocked:                                  │
+│         └── exit loop                                                │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**With plan_iterations: false** (simpler loop, PM creates handoffs directly):
+```
+PM ──handoff──> Expert ──results──> PM ──refined handoff──> Expert (loop)
+```
+
+### When to Use
+
+| Scenario | Use Iterative Loop? |
+|----------|---------------------|
+| Bug reproduction with hypothesis testing | YES |
+| Root cause analysis with multiple leads | YES |
+| Performance optimization with metrics | YES |
+| Feature implementation (clear spec) | NO |
+| Simple bugfix (obvious solution) | NO |
+
+### Configuration in task.md
+
+Add iteration config to task.md for exploratory tasks:
+
+```yaml
+## Iteration Config
+max_iterations: 5              # Max attempts before escalating to human
+blocked_after: 3               # Flag as blocked after N failures
+plan_iterations: true          # Spawn plan agent between iterations (default: true)
+success_criteria: |
+  - POOL_EXHAUSTED error observed in logs
+  - Publisher process crashed (exit code != 0)
+
+## Human Review Overrides
+# Options: required (default) | auto | skip
+initial_plan_review: required      # Human reviews initial plan.md
+iteration_plan_review: required    # Human reviews each iteration plan
+```
+
+**Review override options:**
+| Value | Behavior |
+|-------|----------|
+| `required` | Human must approve before proceeding (default) |
+| `auto` | PM auto-approves if quality criteria met |
+| `skip` | Skip plan agent entirely for that stage |
+
+### PM Responsibilities in Loop
+
+1. **After each iteration:**
+   - Read agent's handoff
+   - Compare results against success_criteria
+   - Document what worked and what didn't in pm_state.json
+
+2. **Before next iteration (with plan_iterations: true):**
+   - Spawn plan agent with:
+     - All previous attempts and their results
+     - What was learned from each attempt
+     - Success criteria still to achieve
+   - Plan agent produces `plan-iteration-N.md` with next approach
+   - **HUMAN REVIEW GATE** (unless `iteration_plan_review: auto|skip`)
+   - After approval, spawn expert agent with approved plan
+
+3. **Before next iteration (with plan_iterations: false):**
+   - PM synthesizes learnings directly
+   - Creates handoff with refined hypothesis/approach
+   - Include "cliff notes" of what was tried
+
+4. **Exit conditions:**
+   - Success criteria met → proceed to next phase
+   - max_iterations reached → escalate to human
+   - Agent reports "blocked" → evaluate if unblockable
+
+### Plan Agent Iteration Handoff
+
+When spawning plan agent between iterations, include:
+
+```markdown
+# PM → Plan: Iteration {N} Planning
+
+## Goal
+{Original success criteria from task.md}
+
+## Previous Attempts
+| Iteration | Approach | Result | Insight |
+|-----------|----------|--------|---------|
+| 1 | {approach} | {survived/crashed/blocked} | {what we learned} |
+| 2 | {approach} | {survived/crashed/blocked} | {what we learned} |
+
+## Constraints
+- Must not retry approaches that failed for same reason
+- Must build on insights from previous iterations
+
+## Deliverable
+Write `plan-iteration-{N}.md` with:
+1. Analysis of why previous approaches failed
+2. New hypothesis based on learnings
+3. Specific approach for next iteration
+4. Expected outcome and verification method
+```
+
+### Example: Bug Reproduction Loop
+
+```markdown
+## Iteration 1 Handoff (PM -> explore)
+Goal: Reproduce POOL_EXHAUSTED crash
+Approach: Kill both subscribers simultaneously
+
+## Iteration 1 Results (explore -> PM)
+- 16K BLOCKED events observed
+- reclaimed_slots=1 every time (no crash)
+- Publisher survived
+
+## Iteration 2 Handoff (PM -> explore)
+Previous attempts: Killing subscribers triggers "ACKed by all" code path
+New hypothesis: Need readers alive but selectively ACKing
+Approach: Try smaller pool size via XML config
+
+## Iteration 2 Results...
+```
+
+### pm_state.json Tracking
+
+```json
+{
+  "iterative_loops": {
+    "config": {
+      "max_iterations": 5,
+      "plan_iterations": true,
+      "iteration_plan_review": "required"
+    },
+    "current": {
+      "goal": "Reproduce POOL_EXHAUSTED crash",
+      "expert_agent": "explore",
+      "iteration": 3,
+      "attempts": [
+        {"iteration": 1, "approach": "kill both subs", "result": "survived", "insight": "ACKed-by-all path"},
+        {"iteration": 2, "approach": "slower readers", "result": "survived", "insight": "reclaimed_slots=1"}
+      ],
+      "current_plan": {
+        "file": "plan-iteration-3.md",
+        "approach": "smaller pool via XML config",
+        "status": "awaiting_human_review"
+      }
+    }
+  },
+  "human_review_gates": {
+    "task": { "status": "approved", "timestamp": "..." },
+    "plan": { "status": "approved", "timestamp": "..." },
+    "iteration_plan_3": { "status": "awaiting", "file": "plan-iteration-3.md", "timestamp": "..." }
+  }
+}
+```
+
+### Benefits
+
+- **Human leverage at highest point**: Plan review before each iteration catches bad approaches early
+- **Accumulated knowledge**: Each iteration builds on previous learnings
+- **Systematic exploration**: Plan agent ensures we don't retry same failed approaches
+- **Human visibility**: progress.md shows iteration history, iteration plans available for review
+- **Graceful degradation**: Escalates when stuck, doesn't loop forever
+- **Configurable autonomy**: `iteration_plan_review: auto` for fully autonomous, `required` for maximum oversight
+
 ## Decision Framework
 
 PM makes signal-based decisions (NO hardcoded timeouts):

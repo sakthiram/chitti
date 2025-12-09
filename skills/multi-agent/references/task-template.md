@@ -51,6 +51,29 @@ If an agent is not listed, PM spawns with default settings.
 #   static: true                        # Use .claude/agents/scribe.md
 ```
 
+## Iteration Config (Optional - for exploratory tasks)
+
+For bug reproduction, root cause analysis, or exploratory research that may require multiple attempts.
+
+```yaml
+# max_iterations: 5              # Max attempts before escalating to human
+# blocked_after: 3               # Flag as blocked after N failures
+# plan_iterations: true          # Spawn plan agent between iterations (default: true)
+# success_criteria: |
+#   - Specific outcome 1
+#   - Specific outcome 2
+```
+
+## Human Review Overrides (Optional)
+
+Control human review gates. Default is `required` for all gates.
+
+```yaml
+# Options: required (default) | auto | skip
+# initial_plan_review: required      # Human reviews initial plan.md
+# iteration_plan_review: required    # Human reviews each iteration plan
+```
+
 ## Agent Guidance (Optional)
 
 Hints for specific agents. PM incorporates these into agent prompts.

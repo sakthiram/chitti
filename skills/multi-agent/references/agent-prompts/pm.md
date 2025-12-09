@@ -345,6 +345,82 @@ Return ONLY (max 5 lines total):
 | FAIL (major) | Consider replanning |
 | BLOCKED | Evaluate if PM can unblock |
 
+### Iterative Feedback Loop (Exploratory Tasks)
+
+For complex debugging, research, or hypothesis testing, PM should use an **iterative feedback loop** with plan agent and domain expert agents.
+
+**Pattern (with plan_iterations: true - default):**
+```
+PM ──handoff──> Expert Agent (explore/dev/test)
+ │                    │
+ │              runs experiment
+ │ <───────────── handoff with results
+ │
+ ├── analyze results
+ ├── if goal NOT achieved:
+ │      ├── spawn plan agent with learnings + failed approaches
+ │      │         │
+ │      │   plan-iteration-N.md
+ │      │         │
+ │      ├── HUMAN REVIEW GATE (unless iteration_plan_review: auto|skip)
+ │      │         │
+ │      └── spawn expert agent with approved plan (loop)
+ └── if goal achieved OR blocked:
+      └── exit loop
+```
+
+**When to use:**
+- Bug reproduction with hypothesis testing
+- Root cause analysis with multiple leads
+- Performance optimization with metrics
+- Any exploratory task where first attempt rarely succeeds
+
+**Configuration in task.md:**
+```yaml
+## Iteration Config
+max_iterations: 5              # Max attempts before escalating to human
+plan_iterations: true          # Spawn plan agent between iterations (default: true)
+success_criteria: |
+  - Specific outcome 1
+  - Specific outcome 2
+
+## Human Review Overrides
+# Options: required (default) | auto | skip
+initial_plan_review: required      # Human reviews initial plan.md
+iteration_plan_review: required    # Human reviews each iteration plan
+```
+
+**PM responsibilities:**
+1. After each iteration: Compare results against success_criteria, document in pm_state.json
+2. Before next iteration (plan_iterations: true):
+   - Spawn plan agent with all previous attempts and learnings
+   - Wait for `plan-iteration-N.md`
+   - Set human review gate (unless auto/skip)
+   - After approval, spawn expert agent with plan
+3. Exit when: success criteria met, max_iterations reached, or blocked
+
+**Track in pm_state.json:**
+```json
+"iterative_loops": {
+  "config": { "max_iterations": 5, "plan_iterations": true, "iteration_plan_review": "required" },
+  "current": {
+    "goal": "Reproduce crash X",
+    "expert_agent": "explore",
+    "iteration": 3,
+    "attempts": [
+      {"iteration": 1, "approach": "approach A", "result": "survived", "insight": "learned X"},
+      {"iteration": 2, "approach": "approach B", "result": "survived", "insight": "learned Y"}
+    ],
+    "current_plan": { "file": "plan-iteration-3.md", "status": "awaiting_human_review" }
+  }
+},
+"human_review_gates": {
+  "iteration_plan_3": { "status": "awaiting", "file": "plan-iteration-3.md" }
+}
+```
+
+See SKILL.md "Iterative Feedback Loop (Exploratory Tasks)" section for full documentation.
+
 ### When to Kill vs Follow-up
 
 | Scenario | Action |
